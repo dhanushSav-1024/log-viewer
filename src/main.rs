@@ -1,24 +1,47 @@
+use clap::Parser;
+use rust_embed::RustEmbed;
+
 use axum::{
     Router,
     extract::State,
-    http::{Method, StatusCode},
-    response::{IntoResponse, Json},
+    http::{Method, StatusCode, Uri, header},
+    response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
+#[derive(RustEmbed)]
+#[folder = "static/"]
+struct StaticAssets;
+async fn serve_static(uri: Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+
+    match StaticAssets::get(path) {
+        Some(file) => {
+            let mime = mime_guess::from_path(path)
+                .first_or_octet_stream()
+                .to_string();
+            (StatusCode::OK, [(header::CONTENT_TYPE, mime)], file.data).into_response()
+        }
+        None => match StaticAssets::get("index.html") {
+            Some(file) => (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "text/html; charset=utf-8".to_string())],
+                file.data,
+            )
+                .into_response(),
+            None => (StatusCode::NOT_FOUND, "404 — not found").into_response(),
+        },
+    }
+}
 use chrono::Local;
-use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
     net::SocketAddr,
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tower_http::{
-    cors::{Any, CorsLayer},
-    services::ServeDir,
-};
-use tracing::{info, warn};
+use tower_http::cors::{Any, CorsLayer};
+use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -138,22 +161,22 @@ async fn handle_not_found() -> impl IntoResponse {
     )
 }
 
-fn build_router(state: SharedState, static_dir: PathBuf) -> Router {
+fn build_router(state: SharedState) -> Router {
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any)
         .allow_origin(Any);
+
     let api = Router::new()
         .route("/logs", get(handle_get_logs))
         .route("/log", post(handle_post_log))
         .route("/clear", post(handle_clear))
         .fallback(handle_not_found)
         .with_state(state);
-    let static_service = ServeDir::new(&static_dir).append_index_html_on_directories(true);
 
     Router::new()
         .nest("/api", api)
-        .fallback_service(static_service)
+        .fallback(serve_static) // all other paths → embedded static/
         .layer(cors)
 }
 
@@ -168,11 +191,10 @@ struct Cli {
     host: String,
     #[arg(short = 'p', long = "port", default_value_t = 8080)]
     port: u16,
-    #[arg(short = 's', long = "static-dir", default_value = "./static")]
-    static_dir: PathBuf,
     #[arg(short = 'm', long = "max-logs", default_value_t = 1000)]
     max_logs: usize,
 }
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -182,15 +204,8 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    if !cli.static_dir.exists() {
-        warn!(
-            "Static directory '{}' does not exist — create it and add index.html",
-            cli.static_dir.display()
-        );
-    }
-
     let state = Arc::new(AppState::new(cli.max_logs));
-    let router = build_router(state, cli.static_dir.clone());
+    let router = build_router(state);
 
     let addr: SocketAddr = format!("{}:{}", cli.host, cli.port)
         .parse()
@@ -200,7 +215,7 @@ async fn main() {
     println!("  STREAMWATCH — Log Viewer Server");
     println!("{}", "=".repeat(60));
     println!("  Listening on   http://{}", addr);
-    println!("  Static files   {}", cli.static_dir.display());
+    println!("  Static assets  embedded in binary");
     println!("  Max log buffer {} entries", cli.max_logs);
     println!();
     println!("  POST logs to   http://{}/api/log", addr);
