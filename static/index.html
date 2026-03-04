@@ -4,32 +4,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StreamWatch — Log Viewer</title>
+    <title>StreamWatch</title>
     <link
-        href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap"
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
     <style>
         :root {
-            --bg: #080808;
-            --bg2: #0f0f0f;
-            --bg3: #141414;
+            --bg: #000000;
+            --bg2: #0a0a0a;
+            --bg3: #111111;
             --bg4: #1a1a1a;
-            --border: rgba(255, 255, 255, 0.12);
-            --border-bright: rgba(255, 255, 255, 0.35);
-            --text: #e8e8e8;
-            --text-dim: #666;
-            --text-muted: #444;
+            --bg5: #222222;
+            --border: rgba(255, 255, 255, 0.15);
+            --border-hi: rgba(255, 255, 255, 0.55);
+            --text: #f0f0f0;
+            --text-dim: #888888;
+            --text-muted: #555555;
             --white: #ffffff;
-            --accent: #ffffff;
-
-            --debug: #4a4a4a;
-            --info: #e0e0e0;
-            --warning: #f0b429;
-            --error: #f05454;
-            --critical: #ff2222;
-
-            --font-mono: 'Space Mono', monospace;
-            --font-ui: 'DM Sans', sans-serif;
+            --debug: #555555;
+            --info: #ffffff;
+            --warning: #f5a623;
+            --error: #ff4444;
+            --critical: #ff0000;
+            --custom: #b08cff;
+            --jk: #7dd3fc;
+            --jst: #86efac;
+            --jn: #fbbf24;
+            --jb: #c084fc;
+            --jp: #64748b;
+            --mono: 'JetBrains Mono', monospace;
+            --ui: 'Inter', sans-serif;
         }
 
         *,
@@ -41,26 +45,22 @@
         }
 
         html {
-            font-size: 14px;
+            font-size: 13px;
         }
 
         body {
-            font-family: var(--font-ui);
+            font-family: var(--ui);
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
             overflow-x: hidden;
         }
 
-        /* ── GRID BACKGROUND ── */
         body::before {
             content: '';
             position: fixed;
             inset: 0;
-            background-image:
-                linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
-            background-size: 40px 40px;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.012) 2px, rgba(255, 255, 255, 0.012) 4px);
             pointer-events: none;
             z-index: 0;
         }
@@ -68,690 +68,786 @@
         .app {
             position: relative;
             z-index: 1;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 24px;
-        }
-
-        /* ── HEADER ── */
-        .header {
             display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            border: 1px solid var(--border-bright);
-            background: var(--bg2);
-            padding: 20px 28px;
-            margin-bottom: 16px;
-            position: relative;
+            flex-direction: column;
+            height: 100vh;
             overflow: hidden;
         }
 
-        .header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, #fff, transparent);
-            opacity: 0.5;
+        /* HEADER */
+        .header {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background: var(--bg2);
+            border-bottom: 1px solid var(--border-hi);
+            gap: 12px;
         }
 
-        .header-left h1 {
-            font-family: var(--font-mono);
-            font-size: 1.15rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: var(--white);
+        .header-brand {
             display: flex;
             align-items: center;
             gap: 10px;
+            flex-shrink: 0;
         }
 
-        .header-left h1 .dot {
+        .live-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             background: #fff;
-            box-shadow: 0 0 8px #fff;
-            animation: pulse 2s infinite;
+            box-shadow: 0 0 6px #fff;
+            animation: livepulse 2s ease-in-out infinite;
+            flex-shrink: 0;
         }
 
-        @keyframes pulse {
+        @keyframes livepulse {
 
             0%,
             100% {
                 opacity: 1;
-                box-shadow: 0 0 8px #fff;
+                box-shadow: 0 0 6px #fff;
             }
 
             50% {
-                opacity: 0.4;
-                box-shadow: 0 0 2px #fff;
+                opacity: 0.3;
+                box-shadow: none;
             }
         }
 
-        .header-left h1 .dot.paused {
+        .live-dot.paused {
             background: var(--warning);
-            box-shadow: 0 0 8px var(--warning);
+            box-shadow: 0 0 6px var(--warning);
             animation: none;
         }
 
-        .header-subtitle {
-            font-family: var(--font-mono);
-            font-size: 0.68rem;
-            color: var(--text-dim);
-            letter-spacing: 0.12em;
-            margin-top: 6px;
-            text-transform: uppercase;
-        }
-
-        .header-right {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        /* ── BUTTONS ── */
-        .btn {
-            font-family: var(--font-mono);
-            font-size: 0.7rem;
+        .brand-text {
+            font-family: var(--mono);
+            font-size: 0.85rem;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
-            padding: 8px 16px;
-            border: 1px solid var(--border-bright);
-            background: transparent;
-            color: var(--text);
-            cursor: pointer;
-            transition: all 0.15s;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .btn:hover {
-            background: var(--bg4);
-            border-color: var(--white);
             color: var(--white);
         }
 
-        .btn.btn-primary {
-            background: var(--white);
-            color: #000;
-            border-color: var(--white);
+        .status-text {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            border-left: 1px solid var(--border);
+            padding-left: 12px;
         }
 
-        .btn.btn-primary:hover {
-            background: #d0d0d0;
-        }
-
-        .btn.btn-danger {
-            border-color: var(--error);
-            color: var(--error);
-        }
-
-        .btn.btn-danger:hover {
-            background: var(--error);
-            color: #fff;
-        }
-
-        .btn.btn-pause {
-            border-color: var(--warning);
-            color: var(--warning);
-        }
-
-        .btn.btn-pause:hover,
-        .btn.btn-pause.active {
-            background: var(--warning);
-            color: #000;
-        }
-
-        /* ── STATS ROW ── */
-        .stats-row {
+        .header-controls {
             display: flex;
-            gap: 0;
-            margin-bottom: 16px;
-            border: 1px solid var(--border);
-            overflow: hidden;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
-        .stat-block {
-            flex: 1;
-            padding: 10px 16px;
-            border-right: 1px solid var(--border);
+        /* STATS */
+        .stats-bar {
+            flex-shrink: 0;
+            display: flex;
+            border-bottom: 1px solid var(--border);
             background: var(--bg2);
         }
 
-        .stat-block:last-child {
+        .stat {
+            flex: 1;
+            padding: 7px 14px;
+            border-right: 1px solid var(--border);
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        .stat:last-child {
             border-right: none;
         }
 
-        .stat-label {
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
-            letter-spacing: 0.12em;
+        .stat-l {
+            font-family: var(--mono);
+            font-size: 0.58rem;
+            letter-spacing: 0.1em;
             text-transform: uppercase;
-            color: var(--text-dim);
-            margin-bottom: 3px;
+            color: var(--text-muted);
         }
 
-        .stat-val {
-            font-family: var(--font-mono);
-            font-size: 1.1rem;
+        .stat-v {
+            font-family: var(--mono);
+            font-size: 0.9rem;
             font-weight: 700;
             color: var(--white);
         }
 
-        .stat-val.warn {
+        .stat-v.c-warn {
             color: var(--warning);
         }
 
-        .stat-val.err {
+        .stat-v.c-err {
             color: var(--error);
         }
 
-        .stat-val.crit {
+        .stat-v.c-crit {
             color: var(--critical);
         }
 
-        /* ── CONTROLS ── */
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            align-items: center;
-            padding: 14px 16px;
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            margin-bottom: 16px;
-        }
-
-        .section-label {
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: var(--text-dim);
-            margin-right: 4px;
-        }
-
-        .filter-chip {
-            font-family: var(--font-mono);
-            font-size: 0.65rem;
-            letter-spacing: 0.08em;
-            padding: 5px 12px;
-            border: 1px solid;
-            background: transparent;
-            cursor: pointer;
-            transition: all 0.15s;
-            text-transform: uppercase;
-            font-weight: 700;
-        }
-
-        .chip-debug {
-            border-color: var(--debug);
-            color: var(--debug);
-        }
-
-        .chip-info {
-            border-color: var(--info);
-            color: var(--info);
-        }
-
-        .chip-warning {
-            border-color: var(--warning);
-            color: var(--warning);
-        }
-
-        .chip-error {
-            border-color: var(--error);
-            color: var(--error);
-        }
-
-        .chip-critical {
-            border-color: var(--critical);
-            color: var(--critical);
-        }
-
-        .chip-debug.active {
-            background: var(--debug);
-            color: #fff;
-        }
-
-        .chip-info.active {
-            background: #fff;
-            color: #000;
-        }
-
-        .chip-warning.active {
-            background: var(--warning);
-            color: #000;
-        }
-
-        .chip-error.active {
-            background: var(--error);
-            color: #fff;
-        }
-
-        .chip-critical.active {
-            background: var(--critical);
-            color: #fff;
-        }
-
-        .divider {
-            width: 1px;
-            background: var(--border);
-            align-self: stretch;
-            margin: 0 4px;
-        }
-
-        /* ── CUSTOM TAGS ── */
-        .tag-section {
+        /* TOOLBAR */
+        .toolbar {
+            flex-shrink: 0;
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 6px;
-            padding: 10px 16px;
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-top: none;
-            margin-bottom: 16px;
+            padding: 8px 16px;
+            background: var(--bg3);
+            border-bottom: 1px solid var(--border);
         }
 
-        .custom-tag {
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
+        .sep {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+            margin: 0 2px;
+            flex-shrink: 0;
+        }
+
+        .tlabel {
+            font-family: var(--mono);
+            font-size: 0.58rem;
+            color: var(--text-muted);
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            margin-right: 2px;
+        }
+
+        /* BUTTONS */
+        .btn {
+            font-family: var(--mono);
+            font-size: 0.62rem;
+            font-weight: 700;
             letter-spacing: 0.08em;
-            padding: 4px 10px;
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            text-transform: uppercase;
+            padding: 5px 12px;
+            border: 1px solid var(--border-hi);
             background: transparent;
             color: var(--text);
             cursor: pointer;
-            text-transform: uppercase;
-            font-weight: 700;
+            transition: all 0.12s;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            transition: all 0.15s;
+            gap: 5px;
+            white-space: nowrap;
         }
 
-        .custom-tag:hover {
+        .btn:hover {
+            background: var(--bg5);
             border-color: var(--white);
             color: var(--white);
         }
 
-        .custom-tag.active {
+        .btn.active {
             background: var(--white);
             color: #000;
             border-color: var(--white);
         }
 
-        .custom-tag .tag-del {
-            font-size: 0.7rem;
-            opacity: 0.5;
-            line-height: 1;
-            padding-left: 2px;
-        }
-
-        .custom-tag .tag-del:hover {
-            opacity: 1;
+        .btn.danger {
+            border-color: var(--error);
             color: var(--error);
         }
 
-        .tag-input-wrap {
-            display: flex;
-            gap: 6px;
-        }
-
-        .tag-input {
-            font-family: var(--font-mono);
-            font-size: 0.68rem;
-            letter-spacing: 0.06em;
-            padding: 5px 10px;
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            color: var(--text);
-            outline: none;
-            width: 140px;
-            transition: border-color 0.15s;
-        }
-
-        .tag-input:focus {
-            border-color: var(--border-bright);
-        }
-
-        .tag-input::placeholder {
-            color: var(--text-muted);
-        }
-
-        /* ── LOG CONTAINER ── */
-        .log-outer {
-            border: 1px solid var(--border);
-            background: var(--bg2);
-        }
-
-        .log-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 14px;
-            border-bottom: 1px solid var(--border);
-            background: var(--bg3);
-        }
-
-        .log-toolbar-left {
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--text-dim);
-        }
-
-        .log-container {
-            max-height: 68vh;
-            overflow-y: auto;
-            padding: 8px;
-        }
-
-        /* ── LOG ENTRY ── */
-        .log-entry {
-            font-family: var(--font-mono);
-            font-size: 0.72rem;
-            line-height: 1.6;
-            border: 1px solid transparent;
-            border-left: 3px solid;
-            background: var(--bg3);
-            margin-bottom: 4px;
-            padding: 9px 12px;
-            transition: border-color 0.15s, background 0.15s;
-            position: relative;
-        }
-
-        .log-entry:hover {
-            border-color: var(--border-bright);
-            background: var(--bg4);
-        }
-
-        .log-entry:hover .entry-actions {
-            opacity: 1;
-        }
-
-        .log-debug {
-            border-left-color: var(--debug);
-        }
-
-        .log-info {
-            border-left-color: var(--info);
-        }
-
-        .log-warning {
-            border-left-color: var(--warning);
-        }
-
-        .log-error {
-            border-left-color: var(--error);
-        }
-
-        .log-custom {
-            border-left-color: rgba(180, 140, 255, 0.6);
-        }
-
-        .badge-custom {
-            background: rgba(180, 140, 255, 0.15);
-            color: rgba(180, 140, 255, 0.9);
-            border: 1px solid rgba(180, 140, 255, 0.4);
-        }
-
-        .log-critical {
-            border-left-color: var(--critical);
-            background: rgba(255, 34, 34, 0.04);
-        }
-
-        .entry-head {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .entry-time {
-            color: var(--text-dim);
-            font-size: 0.63rem;
-            letter-spacing: 0.04em;
-            white-space: nowrap;
-        }
-
-        .entry-badge {
-            font-size: 0.58rem;
-            letter-spacing: 0.12em;
-            padding: 2px 7px;
-            font-weight: 700;
-            text-transform: uppercase;
-            display: inline-block;
-            min-width: 60px;
-            text-align: center;
-        }
-
-        .badge-debug {
-            background: var(--debug);
-            color: #aaa;
-        }
-
-        .badge-info {
-            background: #fff;
-            color: #000;
-        }
-
-        .badge-warning {
-            background: var(--warning);
-            color: #000;
-        }
-
-        .badge-error {
+        .btn.danger:hover {
             background: var(--error);
             color: #fff;
         }
 
-        .badge-critical {
-            background: var(--critical);
-            color: #fff;
+        .btn.warn-btn {
+            border-color: var(--warning);
+            color: var(--warning);
         }
 
-        .entry-msg {
-            color: var(--text);
-            word-break: break-all;
-            flex: 1;
-            min-width: 0;
+        .btn.warn-btn:hover,
+        .btn.warn-btn.active {
+            background: var(--warning);
+            color: #000;
         }
 
-        .entry-actions {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            display: flex;
-            gap: 4px;
-            opacity: 0;
-            transition: opacity 0.15s;
-        }
-
-        .action-btn {
-            font-family: var(--font-mono);
-            font-size: 0.55rem;
-            letter-spacing: 0.08em;
-            padding: 3px 8px;
-            border: 1px solid var(--border-bright);
-            background: var(--bg);
-            color: var(--text-dim);
-            cursor: pointer;
-            text-transform: uppercase;
-            transition: all 0.15s;
-        }
-
-        .action-btn:hover {
-            border-color: var(--white);
-            color: var(--white);
-            background: var(--bg4);
-        }
-
-        .action-btn.copied {
+        .btn.ok {
             border-color: #4ade80;
             color: #4ade80;
         }
 
-        .entry-source {
+        /* CHIPS */
+        .chip {
+            font-family: var(--mono);
             font-size: 0.6rem;
-            color: var(--text-muted);
-            margin-top: 4px;
-            letter-spacing: 0.04em;
-        }
-
-        .entry-source span {
-            color: rgba(255, 255, 255, 0.35);
-        }
-
-        /* ── CUSTOM TAGS on entry ── */
-        .entry-tags {
-            display: flex;
-            gap: 4px;
-            flex-wrap: wrap;
-            margin-top: 4px;
-        }
-
-        .entry-tag-badge {
-            font-family: var(--font-mono);
-            font-size: 0.55rem;
+            font-weight: 700;
             letter-spacing: 0.06em;
-            padding: 1px 6px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: rgba(255, 255, 255, 0.4);
             text-transform: uppercase;
+            padding: 4px 10px;
+            border: 1px solid;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.12s;
         }
 
-        /* ── JSON VIEWER ── */
-        .json-toggle {
+        .chip-d {
+            border-color: #555;
+            color: #777;
+        }
+
+        .chip-d.on {
+            background: #555;
+            color: #ccc;
+        }
+
+        .chip-i {
+            border-color: #ccc;
+            color: #ccc;
+        }
+
+        .chip-i.on {
+            background: #fff;
+            color: #000;
+        }
+
+        .chip-w {
+            border-color: var(--warning);
+            color: var(--warning);
+        }
+
+        .chip-w.on {
+            background: var(--warning);
+            color: #000;
+        }
+
+        .chip-e {
+            border-color: var(--error);
+            color: var(--error);
+        }
+
+        .chip-e.on {
+            background: var(--error);
+            color: #fff;
+        }
+
+        .chip-c {
+            border-color: var(--critical);
+            color: var(--critical);
+        }
+
+        .chip-c.on {
+            background: var(--critical);
+            color: #fff;
+        }
+
+        /* CUSTOM LEVEL CHIPS */
+        .clevel {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border: 1px solid rgba(176, 140, 255, 0.5);
+            color: rgba(176, 140, 255, 0.8);
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.12s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .clevel:hover {
+            border-color: var(--custom);
+            color: var(--custom);
+        }
+
+        .clevel.on {
+            background: var(--custom);
+            color: #000;
+            border-color: var(--custom);
+        }
+
+        .clevel-x {
+            opacity: 0.5;
+            font-size: 0.75rem;
+        }
+
+        .clevel-x:hover {
+            opacity: 1;
+            color: var(--error);
+        }
+
+        .tag-inp {
+            font-family: var(--mono);
+            font-size: 0.62rem;
+            padding: 4px 9px;
+            background: var(--bg4);
+            border: 1px solid var(--border-hi);
+            color: var(--text);
+            outline: none;
+            width: 130px;
+            transition: border-color 0.12s;
+        }
+
+        .tag-inp:focus {
+            border-color: var(--white);
+        }
+
+        .tag-inp::placeholder {
+            color: var(--text-muted);
+        }
+
+        /* LOG AREA */
+        .log-wrap {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+            font-family: var(--mono);
+        }
+
+        /* LOG ENTRY */
+        .le {
+            display: flex;
+            align-items: flex-start;
+            gap: 0;
+            border: 1px solid transparent;
+            border-left: 3px solid var(--debug);
+            background: var(--bg3);
+            margin-bottom: 3px;
+            padding: 7px 10px;
+            transition: border-color 0.1s, background 0.1s;
+            position: relative;
+            min-height: 32px;
+        }
+
+        .le:hover {
+            border-color: var(--border-hi);
+            background: var(--bg4);
+        }
+
+        .le:hover .le-actions {
+            opacity: 1;
+        }
+
+        .le-d {
+            border-left-color: var(--debug);
+        }
+
+        .le-i {
+            border-left-color: rgba(255, 255, 255, 0.7);
+        }
+
+        .le-w {
+            border-left-color: var(--warning);
+        }
+
+        .le-e {
+            border-left-color: var(--error);
+        }
+
+        .le-c {
+            border-left-color: var(--critical);
+            background: rgba(255, 0, 0, 0.03);
+        }
+
+        .le-x {
+            border-left-color: var(--custom);
+        }
+
+        .le-time {
+            font-size: 0.58rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            margin-right: 8px;
+            padding-top: 1px;
+            min-width: 130px;
+            flex-shrink: 0;
+        }
+
+        .le-badge {
+            font-size: 0.55rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            padding: 2px 6px;
+            text-align: center;
+            min-width: 58px;
+            flex-shrink: 0;
+            margin-right: 8px;
+            align-self: flex-start;
+            margin-top: 1px;
+        }
+
+        .bd-d {
+            background: #333;
+            color: #888;
+        }
+
+        .bd-i {
+            background: #fff;
+            color: #000;
+        }
+
+        .bd-w {
+            background: var(--warning);
+            color: #000;
+        }
+
+        .bd-e {
+            background: var(--error);
+            color: #fff;
+        }
+
+        .bd-c {
+            background: var(--critical);
+            color: #fff;
+        }
+
+        .bd-x {
+            background: rgba(176, 140, 255, 0.15);
+            color: var(--custom);
+            border: 1px solid rgba(176, 140, 255, 0.4);
+        }
+
+        .le-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .le-msg {
+            font-size: 0.7rem;
+            color: var(--text);
+            word-break: break-word;
+            line-height: 1.5;
+        }
+
+        .le-src {
+            font-size: 0.58rem;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        .le-src b {
+            color: rgba(255, 255, 255, 0.4);
+            font-weight: 400;
+        }
+
+        .json-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: var(--mono);
+            font-size: 0.55rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            margin-top: 5px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: transparent;
+            color: rgba(255, 255, 255, 0.45);
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+
+        .json-btn:hover {
+            border-color: rgba(255, 255, 255, 0.6);
+            color: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        /* PARSE button — always visible on every entry */
+        .parse-btn {
             display: inline-flex;
             align-items: center;
             gap: 5px;
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
+            font-family: var(--mono);
+            font-size: 0.58rem;
+            font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
+            margin-top: 6px;
+            padding: 3px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: transparent;
             color: rgba(255, 255, 255, 0.4);
             cursor: pointer;
-            margin-top: 5px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            padding: 3px 8px;
-            background: transparent;
-            transition: all 0.15s;
+            transition: all 0.12s;
         }
 
-        .json-toggle:hover {
-            border-color: rgba(255, 255, 255, 0.4);
+        .parse-btn:hover {
+            border-color: rgba(255, 255, 255, 0.55);
+            color: rgba(255, 255, 255, 0.85);
+        }
+
+        .parse-btn.active {
+            border-color: var(--jk);
+            color: var(--jk);
+        }
+
+        /* Inline parse panel */
+        .parse-panel {
+            margin-top: 6px;
+            padding: 10px 12px;
+            background: #050505;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-left: 2px solid rgba(255, 255, 255, 0.2);
+            font-family: var(--mono);
+            font-size: 0.68rem;
+            line-height: 1.8;
+            overflow-x: auto;
+        }
+
+        .inline-json-block {
+            margin-bottom: 8px;
+        }
+
+        .inline-json-block:last-child {
+            margin-bottom: 0;
+        }
+
+        /* modal JSON block separator */
+        .modal-block-label {
+            font-family: var(--mono);
+            font-size: 0.6rem;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin: 12px 0 4px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-block-label:first-child {
+            margin-top: 0;
+        }
+
+        .le-actions {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            display: flex;
+            gap: 3px;
+            opacity: 0;
+            transition: opacity 0.12s;
+        }
+
+        .act-btn {
+            font-family: var(--mono);
+            font-size: 0.52rem;
+            letter-spacing: 0.06em;
+            padding: 2px 7px;
+            border: 1px solid var(--border-hi);
+            background: var(--bg);
+            color: var(--text-dim);
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.12s;
+        }
+
+        .act-btn:hover {
+            border-color: var(--white);
+            color: var(--white);
+        }
+
+        .act-btn.ok {
+            border-color: #4ade80;
+            color: #4ade80;
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal {
+            width: min(98vw, 1200px);
+            height: min(96vh, 900px);
+            background: var(--bg2);
+            border: 1px solid var(--border-hi);
+            display: flex;
+            flex-direction: column;
+            transform: scale(0.96) translateY(10px);
+            transition: transform 0.2s;
+            box-shadow: 0 0 100px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
+        }
+
+        .modal-overlay.open .modal {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border-hi);
+            background: var(--bg3);
+            flex-shrink: 0;
+            gap: 12px;
+        }
+
+        .modal-title {
+            font-family: var(--mono);
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--white);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .modal-meta {
+            font-size: 0.58rem;
+            color: var(--text-dim);
+            font-weight: 400;
+            letter-spacing: 0.06em;
+        }
+
+        .modal-acts {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+
+        .modal-body {
+            flex: 1;
+            overflow: auto;
+            padding: 16px 20px;
+            font-family: var(--mono);
+            font-size: 0.72rem;
+            line-height: 1.7;
+        }
+
+        /* JSON TREE */
+        .jnode {
+            padding-left: 20px;
+        }
+
+        .jrow {
+            display: flex;
+            align-items: baseline;
+            gap: 3px;
+            min-height: 20px;
+            flex-wrap: nowrap;
+        }
+
+        .jtoggle {
+            cursor: pointer;
+            user-select: none;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 0.6rem;
+            min-width: 14px;
+            flex-shrink: 0;
+            transition: color 0.1s;
+        }
+
+        .jtoggle:hover {
             color: rgba(255, 255, 255, 0.8);
         }
 
-        .json-toggle .arrow {
-            transition: transform 0.2s;
-            display: inline-block;
+        .jtoggle.spacer {
+            cursor: default;
+            opacity: 0;
         }
 
-        .json-toggle.open .arrow {
-            transform: rotate(90deg);
-        }
-
-        .json-viewer {
-            display: none;
-            margin-top: 8px;
-            padding: 10px;
-            background: #000;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            overflow-x: auto;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .json-viewer.open {
-            display: block;
-        }
-
-        /* JSON syntax */
-        .jk {
-            color: #93c5fd;
-        }
-
-        /* key */
-        .jst {
-            color: #86efac;
-        }
-
-        /* string value */
-        .jn {
-            color: #fbbf24;
-        }
-
-        /* number */
-        .jb {
-            color: #c084fc;
-        }
-
-        /* bool/null */
-        .jp {
-            color: #94a3b8;
-        }
-
-        /* punctuation */
-
-        .json-node {
-            padding-left: 16px;
-        }
-
-        .json-collapsible {
-            cursor: pointer;
-        }
-
-        .json-collapsible::before {
-            content: '▸ ';
-            color: rgba(255, 255, 255, 0.3);
-            font-size: 0.6rem;
-        }
-
-        .json-collapsible.open::before {
-            content: '▾ ';
-        }
-
-        .json-children {
+        .jchildren {
             display: none;
         }
 
-        .json-children.open {
+        .jchildren.open {
             display: block;
         }
 
-        /* ── NO LOGS ── */
-        .no-logs {
-            padding: 60px 20px;
-            text-align: center;
-            font-family: var(--font-mono);
+        .jkey {
+            color: var(--jk);
+        }
+
+        .jstr {
+            color: var(--jst);
+        }
+
+        .jnum {
+            color: var(--jn);
+        }
+
+        .jbool {
+            color: var(--jb);
+        }
+
+        .jpunc {
+            color: var(--jp);
+        }
+
+        .jnull {
+            color: var(--jb);
+            font-style: italic;
+        }
+
+        .jpreview {
             color: var(--text-muted);
-            font-size: 0.75rem;
-            letter-spacing: 0.1em;
+            font-size: 0.62rem;
+            margin-left: 4px;
+        }
+
+        /* EMPTY */
+        .empty {
+            padding: 80px 20px;
+            text-align: center;
+            font-family: var(--mono);
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
         }
 
-        .no-logs::before {
-            content: '[ NO SIGNAL ]';
+        .empty-glyph {
+            font-size: 2rem;
+            color: rgba(255, 255, 255, 0.05);
             display: block;
-            font-size: 1.2rem;
-            color: rgba(255, 255, 255, 0.08);
             margin-bottom: 12px;
         }
 
-        /* ── SCROLLBAR ── */
+        /* SCROLLBAR */
         ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+            width: 5px;
+            height: 5px;
         }
 
         ::-webkit-scrollbar-track {
@@ -759,54 +855,35 @@
         }
 
         ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.15);
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.3);
         }
 
-        /* ── TOAST ── */
+        /* TOAST */
         .toast {
             position: fixed;
-            bottom: 24px;
-            right: 24px;
-            font-family: var(--font-mono);
-            font-size: 0.7rem;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+            font-family: var(--mono);
+            font-size: 0.65rem;
             letter-spacing: 0.08em;
             text-transform: uppercase;
-            padding: 10px 18px;
+            padding: 9px 16px;
             background: var(--white);
             color: #000;
-            border: none;
-            transform: translateY(80px);
+            transform: translateY(60px);
             opacity: 0;
-            transition: all 0.25s cubic-bezier(.4, 0, .2, 1);
-            z-index: 999;
             pointer-events: none;
+            transition: all 0.2s cubic-bezier(.4, 0, .2, 1);
         }
 
         .toast.show {
             transform: translateY(0);
             opacity: 1;
-        }
-
-        /* ── PAUSE OVERLAY ── */
-        .pause-badge {
-            display: none;
-            align-items: center;
-            gap: 6px;
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--warning);
-            padding: 4px 10px;
-            border: 1px solid var(--warning);
-        }
-
-        .pause-badge.show {
-            display: inline-flex;
         }
     </style>
 </head>
@@ -816,321 +893,372 @@
 
         <!-- HEADER -->
         <div class="header">
-            <div class="header-left">
-                <h1>
-                    <span class="dot" id="statusDot"></span>
-                    STREAMWATCH // LOG VIEWER
-                </h1>
-                <div class="header-subtitle" id="serverInfo">SYSTEM NOMINAL — AWAITING TELEMETRY</div>
+            <div class="header-brand">
+                <div class="live-dot" id="liveDot"></div>
+                <span class="brand-text">StreamWatch</span>
+                <span class="status-text" id="statusTxt">AWAITING TELEMETRY</span>
             </div>
-            <div class="header-right">
-                <span class="pause-badge" id="pauseBadge">⏸ PAUSED</span>
-                <button class="btn btn-pause" id="pauseBtn" onclick="togglePause()">⏸ PAUSE</button>
-                <button class="btn btn-danger" onclick="clearLogs()">✕ CLEAR</button>
+            <div class="header-controls">
+                <button class="btn warn-btn" id="pauseBtn" onclick="togglePause()">⏸ PAUSE</button>
+                <button class="btn" onclick="scrollBottom()">↓ BOTTOM</button>
+                <button class="btn danger" onclick="doClear()">✕ CLEAR</button>
             </div>
         </div>
 
         <!-- STATS -->
-        <div class="stats-row">
-            <div class="stat-block">
-                <div class="stat-label">Total</div>
-                <div class="stat-val" id="statTotal">0</div>
-            </div>
-            <div class="stat-block">
-                <div class="stat-label">Visible</div>
-                <div class="stat-val" id="statVisible">0</div>
-            </div>
-            <div class="stat-block">
-                <div class="stat-label">Warnings</div>
-                <div class="stat-val warn" id="statWarn">0</div>
-            </div>
-            <div class="stat-block">
-                <div class="stat-label">Errors</div>
-                <div class="stat-val err" id="statErr">0</div>
-            </div>
-            <div class="stat-block">
-                <div class="stat-label">Critical</div>
-                <div class="stat-val crit" id="statCrit">0</div>
-            </div>
-            <div class="stat-block">
-                <div class="stat-label">Last Update</div>
-                <div class="stat-val" id="statTime" style="font-size:0.75rem">—</div>
-            </div>
+        <div class="stats-bar">
+            <div class="stat"><span class="stat-l">Total</span><span class="stat-v" id="sTotal">0</span></div>
+            <div class="stat"><span class="stat-l">Visible</span><span class="stat-v" id="sVis">0</span></div>
+            <div class="stat"><span class="stat-l">Warn</span><span class="stat-v c-warn" id="sWarn">0</span></div>
+            <div class="stat"><span class="stat-l">Error</span><span class="stat-v c-err" id="sErr">0</span></div>
+            <div class="stat"><span class="stat-l">Crit</span><span class="stat-v c-crit" id="sCrit">0</span></div>
+            <div class="stat"><span class="stat-l">Updated</span><span class="stat-v" id="sTime"
+                    style="font-size:0.72rem">—</span></div>
         </div>
 
-        <!-- LEVEL FILTERS -->
-        <div class="controls">
-            <span class="section-label">Level</span>
-            <button class="filter-chip chip-debug active" onclick="toggleLevel('DEBUG',this)">Debug</button>
-            <button class="filter-chip chip-info active" onclick="toggleLevel('INFO',this)">Info</button>
-            <button class="filter-chip chip-warning active" onclick="toggleLevel('WARNING',this)">Warning</button>
-            <button class="filter-chip chip-error active" onclick="toggleLevel('ERROR',this)">Error</button>
-            <button class="filter-chip chip-critical active" onclick="toggleLevel('CRITICAL',this)">Critical</button>
-            <div class="divider"></div>
-            <span class="section-label">Custom Level</span>
-            <span id="activeTagLabel"
-                style="font-family:var(--font-mono);font-size:0.6rem;color:var(--text-dim);letter-spacing:.08em;">NONE</span>
-            <button class="btn" onclick="clearTagFilter()" style="padding:5px 10px;font-size:0.6rem;">✕ CLEAR</button>
+        <!-- TOOLBAR -->
+        <div class="toolbar">
+            <span class="tlabel">LEVEL</span>
+            <button class="chip chip-d on" data-lvl="DEBUG" onclick="toggleChip(this)">DEBUG</button>
+            <button class="chip chip-i on" data-lvl="INFO" onclick="toggleChip(this)">INFO</button>
+            <button class="chip chip-w on" data-lvl="WARNING" onclick="toggleChip(this)">WARN</button>
+            <button class="chip chip-e on" data-lvl="ERROR" onclick="toggleChip(this)">ERROR</button>
+            <button class="chip chip-c on" data-lvl="CRITICAL" onclick="toggleChip(this)">CRIT</button>
+            <div class="sep"></div>
+            <span class="tlabel">CUSTOM</span>
+            <div id="clevelList" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+            <input class="tag-inp" id="clevelInp" placeholder="add level…" maxlength="20"
+                onkeydown="if(event.key==='Enter')addCLevel()">
+            <button class="btn" onclick="addCLevel()" style="padding:4px 9px;">+</button>
+            <div class="sep"></div>
+            <span class="tlabel">FILTER:</span>
+            <span id="activeCLLabel" style="font-family:var(--mono);font-size:0.62rem;color:var(--text-dim);">ALL</span>
+            <button class="btn" onclick="clearCLFilter()" style="padding:3px 8px;font-size:0.58rem;">✕</button>
         </div>
 
-        <!-- CUSTOM LEVELS -->
-        <div class="tag-section">
-            <span class="section-label">Custom Levels</span>
-            <div id="tagList"></div>
-            <div class="tag-input-wrap">
-                <input class="tag-input" id="tagInput" type="text" placeholder="e.g. TRACE, VERBOSE..." maxlength="20"
-                    onkeydown="if(event.key==='Enter') addTag()">
-                <button class="btn" onclick="addTag()" style="padding:5px 12px;font-size:0.6rem;">+ ADD</button>
+        <!-- LOG STREAM -->
+        <div class="log-wrap">
+            <div class="log-scroll" id="logScroll">
+                <div class="empty"><span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS</div>
             </div>
         </div>
+    </div>
 
-        <!-- LOG PANEL -->
-        <div class="log-outer">
-            <div class="log-toolbar">
-                <span class="log-toolbar-left">// OUTPUT STREAM</span>
-                <button class="btn" onclick="scrollToBottom()" style="padding:4px 10px;font-size:0.58rem;">↓
-                    BOTTOM</button>
+    <!-- JSON MODAL -->
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">
+                    ◈ JSON DATA
+                    <span class="modal-meta" id="modalMeta"></span>
+                </div>
+                <div class="modal-acts">
+                    <button class="btn" onclick="expandAll()">EXPAND ALL</button>
+                    <button class="btn" onclick="collapseAll()">COLLAPSE ALL</button>
+                    <button class="btn" id="modalCopyBtn" onclick="copyModalJson()">⎘ COPY JSON</button>
+                    <button class="btn danger" onclick="closeModalDirect()">✕ CLOSE</button>
+                </div>
             </div>
-            <div class="log-container" id="logContainer">
-                <div class="no-logs">Waiting for incoming logs...</div>
-            </div>
+            <div class="modal-body" id="modalBody"></div>
         </div>
-
     </div>
 
     <div class="toast" id="toast"></div>
 
     <script>
-        const levels = { DEBUG: true, INFO: true, WARNING: true, ERROR: true, CRITICAL: true };
+        const LEVELS = { DEBUG: true, INFO: true, WARNING: true, ERROR: true, CRITICAL: true };
+        const BUILTINS = new Set(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']);
         let paused = false;
         let allLogs = [];
-        let activeTagFilter = null;
-        function setCookie(k, v, days = 365) {
-            const d = new Date(); d.setTime(d.getTime() + days * 86400000);
-            document.cookie = `${k}=${encodeURIComponent(v)};expires=${d.toUTCString()};path=/`;
-        }
-        function getCookie(k) {
-            const m = document.cookie.match(new RegExp('(?:^|; )' + k + '=([^;]*)'));
-            return m ? decodeURIComponent(m[1]) : null;
-        }
-        let customTags = [];
-        function saveTags() { setCookie('sw_custom_levels', JSON.stringify(customTags)); }
-        function loadTags() {
-            try { const c = getCookie('sw_custom_levels'); if (c) customTags = JSON.parse(c); } catch (e) { }
-            renderTags();
-        }
-        function addTag() {
-            const inp = document.getElementById('tagInput');
+        let renderedCount = 0;
+        let activeCLevel = null;
+        let customLevels = [];
+        let modalJson = null;
+        const ck = {
+            set(k, v) { const d = new Date(); d.setTime(d.getTime() + 365 * 86400000); document.cookie = `${k}=${encodeURIComponent(JSON.stringify(v))};expires=${d.toUTCString()};path=/`; },
+            get(k) { const m = document.cookie.match(new RegExp('(?:^|; )' + k + '=([^;]*)')); try { return m ? JSON.parse(decodeURIComponent(m[1])) : null; } catch { return null; } }
+        };
+        function loadCLevels() { customLevels = ck.get('sw_clevels') || []; renderCLevels(); }
+        function saveCLevels() { ck.set('sw_clevels', customLevels); }
+        function addCLevel() {
+            const inp = document.getElementById('clevelInp');
             const val = inp.value.trim().toUpperCase();
-            if (!val || customTags.includes(val)) return;
-            customTags.push(val); saveTags(); renderTags();
-            inp.value = '';
+            if (!val || customLevels.includes(val) || BUILTINS.has(val)) return;
+            customLevels.push(val); saveCLevels(); renderCLevels(); inp.value = '';
         }
-        function removeTag(t) {
-            customTags = customTags.filter(x => x !== t);
-            if (activeTagFilter === t) activeTagFilter = null;
-            document.getElementById('activeTagLabel').textContent = activeTagFilter || 'NONE';
-            saveTags(); renderTags(); filterLogs();
+        function removeCLevel(t) {
+            customLevels = customLevels.filter(x => x !== t);
+            if (activeCLevel === t) { activeCLevel = null; updateCLLabel(); }
+            saveCLevels(); renderCLevels(); refilter();
         }
-        function filterByTag(t) {
-            activeTagFilter = (activeTagFilter === t) ? null : t;
-            document.getElementById('activeTagLabel').textContent = activeTagFilter || 'NONE';
-            renderTags(); filterLogs();
+        function filterByCLevel(t) { activeCLevel = activeCLevel === t ? null : t; updateCLLabel(); renderCLevels(); refilter(); }
+        function clearCLFilter() { activeCLevel = null; updateCLLabel(); renderCLevels(); refilter(); }
+        function updateCLLabel() { document.getElementById('activeCLLabel').textContent = activeCLevel || 'ALL'; }
+        function renderCLevels() {
+            document.getElementById('clevelList').innerHTML = customLevels.map(t => `
+    <span class="clevel${activeCLevel === t ? ' on' : ''}" onclick="filterByCLevel('${t}')">
+      ${t}<span class="clevel-x" onclick="event.stopPropagation();removeCLevel('${t}')">✕</span>
+    </span>`).join('');
         }
-        function clearTagFilter() {
-            activeTagFilter = null;
-            document.getElementById('activeTagLabel').textContent = 'NONE';
-            renderTags(); filterLogs();
+        function toggleChip(btn) {
+            const lvl = btn.dataset.lvl;
+            LEVELS[lvl] = !LEVELS[lvl];
+            btn.classList.toggle('on', LEVELS[lvl]);
+            ck.set('sw_levels', LEVELS);
+            refilter();
         }
-        function renderTags() {
-            const wrap = document.getElementById('tagList');
-            wrap.innerHTML = customTags.map(t => `
-        <span class="custom-tag${activeTagFilter === t ? ' active' : ''}" onclick="filterByTag('${t}')">
-            ${t}
-            <span class="tag-del" onclick="event.stopPropagation();removeTag('${t}')">✕</span>
-        </span>
-    `).join('');
-        }
-        function toggleLevel(level, btn) {
-            levels[level] = !levels[level];
-            btn.classList.toggle('active');
-            saveLevelCookies(); filterLogs();
-        }
-        function saveLevelCookies() {
-            setCookie('sw_levels', JSON.stringify(levels));
-        }
-        function loadLevelCookies() {
-            try {
-                const c = getCookie('sw_levels');
-                if (!c) return;
-                const saved = JSON.parse(c);
-                Object.keys(saved).forEach(k => {
-                    levels[k] = saved[k];
-                });
-                document.querySelectorAll('.filter-chip').forEach(btn => {
-                    const lvl = btn.textContent.trim().toUpperCase();
-                    if (!levels[lvl]) btn.classList.remove('active');
-                    else btn.classList.add('active');
-                });
-            } catch (e) { }
+        function loadLevels() {
+            const saved = ck.get('sw_levels'); if (!saved) return;
+            Object.keys(saved).forEach(k => { if (k in LEVELS) LEVELS[k] = saved[k]; });
+            document.querySelectorAll('.chip[data-lvl]').forEach(btn => {
+                btn.classList.toggle('on', LEVELS[btn.dataset.lvl]);
+            });
         }
         function togglePause() {
             paused = !paused;
             const btn = document.getElementById('pauseBtn');
-            const dot = document.getElementById('statusDot');
-            const badge = document.getElementById('pauseBadge');
+            const dot = document.getElementById('liveDot');
             if (paused) {
                 btn.textContent = '▶ RESUME'; btn.classList.add('active');
                 dot.classList.add('paused');
-                badge.classList.add('show');
-                document.getElementById('serverInfo').textContent = 'STREAM PAUSED';
+                document.getElementById('statusTxt').textContent = 'PAUSED';
             } else {
                 btn.textContent = '⏸ PAUSE'; btn.classList.remove('active');
                 dot.classList.remove('paused');
-                badge.classList.remove('show');
-                document.getElementById('serverInfo').textContent = 'SYSTEM NOMINAL — LIVE';
+                document.getElementById('statusTxt').textContent = 'LIVE';
                 fetchLogs();
             }
         }
-        function extractJSON(msg) {
-            const starts = [...msg.matchAll(/[\{\[]/g)].map(m => m.index);
-            for (const s of starts) {
-                for (let e = msg.length; e > s; e--) {
-                    try {
-                        const sub = msg.slice(s, e);
-                        const parsed = JSON.parse(sub);
-                        if (typeof parsed === 'object' && parsed !== null)
-                            return { parsed, pre: msg.slice(0, s), post: msg.slice(e) };
-                    } catch (_) { }
+        function pyToJson(s) {
+            try {
+                let j = s
+                    .replace(/:\s*True\b/g, ': true')
+                    .replace(/:\s*False\b/g, ': false')
+                    .replace(/:\s*None\b/g, ': null')
+                    .replace(/,\s*}/g, '}')
+                    .replace(/,\s*]/g, ']');
+                let out = '', i = 0;
+                while (i < j.length) {
+                    const ch = j[i];
+                    if (ch === "'") {
+                        let str = '"'; i++;
+                        while (i < j.length) {
+                            const c = j[i];
+                            if (c === '\\' && j[i + 1] === "'") { str += "'"; i += 2; continue; }
+                            if (c === '"') { str += '\\"'; i++; continue; }
+                            if (c === "'") { i++; break; }
+                            str += c; i++;
+                        }
+                        out += str + '"';
+                    } else { out += ch; i++; }
+                }
+                return out;
+            } catch { return null; }
+        }
+        function extractOneJSON(msg, fromIdx = 0) {
+            const sub = msg.slice(fromIdx);
+            const rel = sub.search(/[{\[]/);
+            if (rel === -1) return null;
+            const start = fromIdx + rel;
+            const open = msg[start], close = open === '{' ? '}' : ']';
+            let depth = 0, inStr = false, strChar = '', end = -1;
+            for (let i = start; i < msg.length; i++) {
+                const c = msg[i];
+                if (inStr) { if (c === '\\') { i++; continue; } if (c === strChar) inStr = false; }
+                else {
+                    if (c === '"' || c === "'") { inStr = true; strChar = c; continue; }
+                    if (c === open) depth++;
+                    if (c === close) { depth--; if (depth === 0) { end = i + 1; break; } }
                 }
             }
+            if (end === -1) return null;
+            const raw = msg.slice(start, end);
+            let parsed = null;
+            try { parsed = JSON.parse(raw); } catch { }
+            if (!parsed) { try { parsed = JSON.parse(pyToJson(raw)); } catch { } }
+            if (!parsed || typeof parsed !== 'object') return null;
+            return { parsed, start, end };
+        }
+        function extractAllJSON(msg) {
+            const blocks = [];
+            let cursor = 0;
+            while (cursor < msg.length) {
+                const b = extractOneJSON(msg, cursor);
+                if (!b) break;
+                blocks.push(b);
+                cursor = b.end;
+            }
+            return blocks; // [{parsed, start, end}, ...]
+        }
+        function jLeaf(data) {
+            if (data === null) return `<span class="jnull">null</span>`;
+            if (typeof data === 'boolean') return `<span class="jbool">${data}</span>`;
+            if (typeof data === 'number') return `<span class="jnum">${data}</span>`;
+            if (typeof data === 'string') return `<span class="jstr">"${esc(data)}"</span>`;
             return null;
         }
-
-        function buildJsonTree(data, depth = 0) {
-            if (data === null) return `<span class="jb">null</span>`;
-            if (typeof data === 'boolean') return `<span class="jb">${data}</span>`;
-            if (typeof data === 'number') return `<span class="jn">${data}</span>`;
-            if (typeof data === 'string') return `<span class="jst">"${escapeHtml(data)}"</span>`;
-
-            if (Array.isArray(data)) {
-                if (data.length === 0) return `<span class="jp">[]</span>`;
-                const items = data.map(v =>
-                    `<div class="json-node">${buildJsonTree(v, depth + 1)}<span class="jp">,</span></div>`
-                ).join('');
-                const id = 'j' + Math.random().toString(36).slice(2, 8);
-                return `<span class="jp">[</span>
-            <span class="json-collapsible" onclick="toggleJsonNode('${id}',this)"></span>
-            <div class="json-children" id="${id}">${items}</div>
-            <span class="jp">]</span>`;
-            }
-            const keys = Object.keys(data);
-            if (keys.length === 0) return `<span class="jp">{}</span>`;
-            const items = keys.map(k => {
-                const v = buildJsonTree(data[k], depth + 1);
-                return `<div class="json-node"><span class="jk">"${escapeHtml(k)}"</span><span class="jp">: </span>${v}<span class="jp">,</span></div>`;
-            }).join('');
-            const id = 'j' + Math.random().toString(36).slice(2, 8);
-            return `<span class="jp">{</span>
-        <span class="json-collapsible" onclick="toggleJsonNode('${id}',this)"></span>
-        <div class="json-children" id="${id}">${items}</div>
-        <span class="jp">}</span>`;
+        function jPreview(data) {
+            if (Array.isArray(data)) return `<span class="jpunc">[</span><span class="jpreview">${data.length} items</span><span class="jpunc">]</span>`;
+            return `<span class="jpunc">{</span><span class="jpreview">${Object.keys(data).length} keys</span><span class="jpunc">}</span>`;
         }
+        function jTree(data, prefix, depth = 0) {
+            if (depth > 20) return `<span class="jpunc">[…]</span>`;
+            const leaf = jLeaf(data);
+            if (leaf !== null) return leaf;
 
-        function toggleJsonNode(id, el) {
-            const c = document.getElementById(id);
-            c.classList.toggle('open');
-            el.classList.toggle('open');
-        }
-        function renderEntry(log, idx) {
-            const lvlU = log.level.toUpperCase();
-            const builtins = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
-            const isBuiltin = builtins.includes(lvlU);
-            const lvlClass = isBuiltin ? lvlU.toLowerCase() : 'custom';
-            const badgeClass = isBuiltin ? `badge-${lvlU.toLowerCase()}` : 'badge-custom';
-            const isCustomLevel = customTags.includes(lvlU);
-            const jResult = extractJSON(log.message);
-            let msgHtml = '';
-            let jsonHtml = '';
+            const id = prefix + 'd' + depth + '_' + (Math.random() * 1e9 | 0);
+            const isArr = Array.isArray(data);
+            const entries = isArr ? data.map((v, i) => [i, v]) : Object.entries(data);
 
-            if (jResult) {
-                msgHtml = `${escapeHtml(jResult.pre)}<span style="color:rgba(255,255,255,0.35)">[JSON]</span>${escapeHtml(jResult.post)}`;
-                const jid = 'jv' + idx;
-                jsonHtml = `
-            <div>
-                <button class="json-toggle" onclick="toggleViewer('${jid}',this)">
-                    <span class="arrow">▸</span> JSON DATA
-                </button>
-                <div class="json-viewer" id="${jid}">
-                    ${buildJsonTree(jResult.parsed)}
-                </div>
-            </div>`;
-            } else {
-                msgHtml = escapeHtml(log.message);
-            }
-            const customLevelHtml = isCustomLevel
-                ? `<span class="entry-tag-badge" style="border-color:rgba(180,140,255,0.5);color:rgba(180,140,255,0.8)">${lvlU}</span>`
-                : '';
-
-            const srcHtml = log.logger
-                ? `<div class="entry-source">Logger: <span>${log.logger}</span> | <span>${log.filename || '—'}:${log.lineno || '?'}</span></div>`
-                : '';
-
-            return `
-    <div class="log-entry log-${lvlClass}" data-level="${lvlU}" id="le${idx}">
-        <div class="entry-actions">
-            <button class="action-btn" onclick="copyEntry(${idx})">⎘ COPY</button>
-        </div>
-        <div class="entry-head">
-            <span class="entry-time">${log.time}</span>
-            <span class="entry-badge ${badgeClass}">${lvlU}</span>
-            <span class="entry-msg">${msgHtml}</span>
-        </div>
-        ${srcHtml}
-        ${customLevelHtml ? `<div class="entry-tags">${customLevelHtml}</div>` : ''}
-        ${jsonHtml}
+            const rows = entries.map(([k, v], i) => {
+                const comma = i < entries.length - 1 ? `<span class="jpunc">,</span>` : '';
+                const keyHtml = isArr ? '' : `<span class="jkey">"${esc(String(k))}"</span><span class="jpunc">: </span>`;
+                const childLeaf = jLeaf(v);
+                if (childLeaf !== null) {
+                    return `<div class="jnode"><div class="jrow"><span class="jtoggle spacer"></span>${keyHtml}${childLeaf}${comma}</div></div>`;
+                }
+                const cid = prefix + 'c' + i + 'd' + depth + '_' + (Math.random() * 1e9 | 0);
+                return `<div class="jnode">
+      <div class="jrow"><span class="jtoggle" onclick="jtog('${cid}',this)">▸</span>${keyHtml}${jPreview(v)}${comma}</div>
+      <div class="jchildren" id="${cid}">${jTree(v, prefix + '_' + i, depth + 1)}</div>
     </div>`;
+            }).join('');
+
+            const oB = isArr ? '[' : '{', cB = isArr ? ']' : '}';
+            const preview = isArr ? `${data.length} items` : `${Object.keys(data).length} keys`;
+            return `<div class="jrow"><span class="jtoggle" onclick="jtog('${id}',this)">▸</span>
+    <span class="jpunc">${oB}</span><span class="jpreview">${preview}</span><span class="jpunc">${cB}</span>
+  </div>
+  <div class="jchildren" id="${id}">${rows}</div>`;
         }
 
-        function toggleViewer(id, btn) {
-            const el = document.getElementById(id);
-            el.classList.toggle('open');
-            btn.classList.toggle('open');
+        function jtog(id, el) {
+            const c = document.getElementById(id); if (!c) return;
+            const open = c.classList.toggle('open');
+            el.textContent = open ? '▾' : '▸';
         }
-        const logTexts = {};
-        function copyEntry(idx) {
-            const log = allLogs[idx];
-            if (!log) return;
-            const txt = `[${log.time}] [${log.level}] ${log.message}` + (log.logger ? ` | ${log.logger} ${log.filename}:${log.lineno}` : '');
+
+        function expandAll() {
+            document.querySelectorAll('#modalBody .jchildren').forEach(el => el.classList.add('open'));
+            document.querySelectorAll('#modalBody .jtoggle:not(.spacer)').forEach(el => el.textContent = '▾');
+        }
+        function collapseAll() {
+            document.querySelectorAll('#modalBody .jchildren').forEach(el => el.classList.remove('open'));
+            document.querySelectorAll('#modalBody .jtoggle:not(.spacer)').forEach(el => el.textContent = '▸');
+        }
+        function openModal(logIdx) {
+            const log = allLogs[logIdx]; if (!log) return;
+            const blocks = extractAllJSON(log.message);
+            if (!blocks.length) return;
+            modalJson = blocks.map(b => b.parsed);
+            const prefix = 'modal_' + logIdx + '_';
+            document.getElementById('modalMeta').textContent = `${log.time} · ${log.level}${log.logger ? ' · ' + log.logger : ''}`;
+            document.getElementById('modalBody').innerHTML = blocks.map((b, bi) => `
+    ${blocks.length > 1 ? `<div class="modal-block-label">Block ${bi + 1}</div>` : ''}
+    <div class="modal-json-block">${jTree(b.parsed, prefix + bi + '_')}</div>
+  `).join('');
+            document.getElementById('modalOverlay').classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeModal(e) { if (e.target === document.getElementById('modalOverlay')) closeModalDirect(); }
+        function closeModalDirect() { document.getElementById('modalOverlay').classList.remove('open'); document.body.style.overflow = ''; }
+        function copyModalJson() {
+            if (!modalJson) return;
+            const txt = modalJson.length === 1 ? JSON.stringify(modalJson[0], null, 2) : JSON.stringify(modalJson, null, 2);
             navigator.clipboard.writeText(txt).then(() => {
-                const btn = document.querySelector(`#le${idx} .action-btn`);
-                if (btn) { btn.textContent = '✓ COPIED'; btn.classList.add('copied'); setTimeout(() => { btn.textContent = '⎘ COPY'; btn.classList.remove('copied'); }, 1500); }
-                showToast('Log copied to clipboard');
+                const btn = document.getElementById('modalCopyBtn');
+                btn.textContent = '✓ COPIED'; btn.classList.add('ok');
+                setTimeout(() => { btn.textContent = '⎘ COPY JSON'; btn.classList.remove('ok'); }, 1500);
+                showToast('JSON copied');
             });
         }
-        function filterLogs() {
-            const entries = document.querySelectorAll('.log-entry');
-            let vis = 0, warn = 0, err = 0, crit = 0;
-            allLogs.forEach(l => {
-                const lvl = l.level.toUpperCase();
-                if (lvl === 'WARNING') warn++;
-                if (lvl === 'ERROR') err++;
-                if (lvl === 'CRITICAL') crit++;
-            });
-            entries.forEach((el) => {
-                const lvl = el.dataset.level; // e.g. "INFO", "TRACE", "VERBOSE"
-                const builtins = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
-                const isBuiltin = builtins.includes(lvl);
-                const levelChipOk = isBuiltin ? (levels[lvl] || false) : true;
-                const customLevelOk = !activeTagFilter || (lvl === activeTagFilter);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModalDirect(); });
+        function toggleParsePanel(idx) {
+            const panel = document.getElementById('pp' + idx);
+            if (!panel) return;
+            if (panel.dataset.built !== '1') {
+                const log = allLogs[idx]; if (!log) return;
+                const blocks = extractAllJSON(log.message);
+                if (!blocks.length) {
+                    panel.innerHTML = `<span style="color:var(--text-muted);font-size:0.65rem;">No JSON found in this message.</span>`;
+                } else {
+                    const prefix = 'e' + idx + '_';
+                    panel.innerHTML = blocks.map((b, bi) => `
+        ${blocks.length > 1 ? `<div style="font-size:0.6rem;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em;">Block ${bi + 1}</div>` : ''}
+        <div class="inline-json-block">${jTree(b.parsed, prefix + bi + '_')}</div>
+      `).join('');
+                }
+                panel.dataset.built = '1';
+            }
+            const btn = document.getElementById('parsebtn' + idx);
+            const visible = panel.style.display !== 'none' && panel.style.display !== '';
+            panel.style.display = visible ? 'none' : 'block';
+            if (btn) btn.classList.toggle('active', !visible);
+        }
+        function makeEntry(log, idx) {
+            const lvlU = log.level.toUpperCase();
+            const isBuiltin = BUILTINS.has(lvlU);
+            const lvlCls = isBuiltin ? 'le-' + { DEBUG: 'd', INFO: 'i', WARNING: 'w', ERROR: 'e', CRITICAL: 'c' }[lvlU] : 'le-x';
+            const bdgCls = isBuiltin ? 'bd-' + { DEBUG: 'd', INFO: 'i', WARNING: 'w', ERROR: 'e', CRITICAL: 'c' }[lvlU] : 'bd-x';
 
-                if (levelChipOk && customLevelOk) { el.style.display = ''; vis++; }
-                else el.style.display = 'none';
+            const src = log.logger
+                ? `<div class="le-src">Logger: <b>${log.logger}</b>&nbsp;·&nbsp;<b>${log.filename || ''}${log.lineno ? ':' + log.lineno : ''}</b></div>`
+                : '';
+
+            const el = document.createElement('div');
+            el.className = `le ${lvlCls}`;
+            el.dataset.level = lvlU;
+            el.id = `le${idx}`;
+            el.innerHTML = `
+    <div class="le-actions">
+      <button class="act-btn" onclick="copyEntry(${idx})">⎘ COPY</button>
+      <button class="act-btn" onclick="openModal(${idx})">⤢ MODAL</button>
+    </div>
+    <span class="le-time">${log.time}</span>
+    <span class="le-badge ${bdgCls}">${lvlU}</span>
+    <div class="le-body">
+      <div class="le-msg">${esc(log.message)}</div>
+      ${src}
+      <button class="parse-btn" id="parsebtn${idx}" onclick="toggleParsePanel(${idx})">▸ PARSE</button>
+      <div class="parse-panel" id="pp${idx}" style="display:none"></div>
+    </div>`;
+            return el;
+        }
+        function applyLogs(newLogs) {
+            const scroll = document.getElementById('logScroll');
+            if (newLogs.length < renderedCount || renderedCount === 0) {
+                scroll.innerHTML = '';
+                renderedCount = 0;
+                if (!newLogs.length) {
+                    scroll.innerHTML = '<div class="empty"><span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS</div>';
+                    return;
+                }
+            }
+
+            const atBottom = (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight) < 80;
+            const frag = document.createDocumentFragment();
+            for (let i = renderedCount; i < newLogs.length; i++) frag.appendChild(makeEntry(newLogs[i], i));
+            renderedCount = newLogs.length;
+            scroll.appendChild(frag);
+
+            refilter();
+            if (atBottom) scroll.scrollTop = scroll.scrollHeight;
+        }
+        function refilter() {
+            let vis = 0, warn = 0, err = 0, crit = 0;
+            allLogs.forEach(l => { const v = l.level.toUpperCase(); if (v === 'WARNING') warn++; if (v === 'ERROR') err++; if (v === 'CRITICAL') crit++; });
+            document.querySelectorAll('#logScroll .le').forEach(el => {
+                const lvl = el.dataset.level;
+                const chipOk = BUILTINS.has(lvl) ? (LEVELS[lvl] || false) : true;
+                const clevelOk = !activeCLevel || (lvl === activeCLevel);
+                const show = chipOk && clevelOk;
+                el.style.display = show ? '' : 'none';
+                if (show) vis++;
             });
-            document.getElementById('statVisible').textContent = vis;
-            document.getElementById('statWarn').textContent = warn;
-            document.getElementById('statErr').textContent = err;
-            document.getElementById('statCrit').textContent = crit;
+            document.getElementById('sVis').textContent = vis;
+            document.getElementById('sWarn').textContent = warn;
+            document.getElementById('sErr').textContent = err;
+            document.getElementById('sCrit').textContent = crit;
         }
         function fetchLogs() {
             if (paused) return;
@@ -1138,49 +1266,39 @@
                 .then(r => r.json())
                 .then(data => {
                     allLogs = data.logs;
-                    renderLogs(data.logs);
-                    document.getElementById('statTotal').textContent = data.total;
-                    document.getElementById('statTime').textContent = new Date().toLocaleTimeString();
-                    document.getElementById('serverInfo').textContent = 'SYSTEM NOMINAL — LIVE';
+                    applyLogs(data.logs);
+                    document.getElementById('sTotal').textContent = data.total;
+                    document.getElementById('sTime').textContent = new Date().toLocaleTimeString();
+                    document.getElementById('statusTxt').textContent = 'LIVE';
                 })
-                .catch(() => { document.getElementById('serverInfo').textContent = 'CONNECTION ERROR'; });
+                .catch(() => { document.getElementById('statusTxt').textContent = 'NO CONNECTION'; });
         }
 
-        function renderLogs(logs) {
-            const container = document.getElementById('logContainer');
-            if (!logs.length) {
-                container.innerHTML = '<div class="no-logs">Waiting for incoming logs...</div>';
-                document.getElementById('statVisible').textContent = 0;
-                return;
-            }
-            const wasAtBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 60;
-            container.innerHTML = logs.map((l, i) => renderEntry(l, i)).join('');
-            filterLogs();
-            if (wasAtBottom) container.scrollTop = container.scrollHeight;
-        }
+        function scrollBottom() { const s = document.getElementById('logScroll'); s.scrollTop = s.scrollHeight; }
 
-        function scrollToBottom() {
-            const c = document.getElementById('logContainer');
-            c.scrollTop = c.scrollHeight;
-        }
-        function clearLogs() {
+        function doClear() {
             if (!confirm('Clear all logs?')) return;
-            fetch('/api/clear', { method: 'POST' }).then(() => fetchLogs());
+            fetch('/api/clear', { method: 'POST' }).then(() => {
+                allLogs = []; renderedCount = 0;
+                document.getElementById('logScroll').innerHTML = '<div class="empty"><span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS</div>';
+                document.getElementById('sTotal').textContent = 0;
+                document.getElementById('sVis').textContent = 0;
+            });
         }
-        let toastTimer;
-        function showToast(msg) {
-            const t = document.getElementById('toast');
-            t.textContent = msg; t.classList.add('show');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+        function copyEntry(idx) {
+            const log = allLogs[idx]; if (!log) return;
+            const txt = `[${log.time}] [${log.level}] ${log.message}` + (log.logger ? ` | ${log.logger} ${log.filename}:${log.lineno}` : '');
+            navigator.clipboard.writeText(txt).then(() => {
+                const btn = document.querySelector(`#le${idx} .act-btn`);
+                if (btn) { btn.textContent = '✓'; btn.classList.add('ok'); setTimeout(() => { btn.textContent = '⎘ COPY'; btn.classList.remove('ok'); }, 1400); }
+                showToast('Copied');
+            });
         }
-
-        function escapeHtml(s) {
-            if (typeof s !== 'string') return String(s);
-            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-        loadTags();
-        loadLevelCookies();
+        let _tt;
+        function showToast(msg) { const el = document.getElementById('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(_tt); _tt = setTimeout(() => el.classList.remove('show'), 1800); }
+        function esc(s) { if (typeof s !== 'string') return String(s); return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+        loadLevels();
+        loadCLevels();
         setInterval(fetchLogs, 2000);
         fetchLogs();
     </script>
