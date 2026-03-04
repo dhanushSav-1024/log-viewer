@@ -6,10 +6,10 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Local;
+use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
-    env,
     net::SocketAddr,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -157,43 +157,53 @@ fn build_router(state: SharedState, static_dir: PathBuf) -> Router {
         .layer(cors)
 }
 
+#[derive(Parser, Debug)]
+#[command(
+    name = "streamwatch",
+    about = "StreamWatch — Log Viewer Server",
+    version
+)]
+struct Cli {
+    #[arg(short = 'i', long = "ip", default_value = "0.0.0.0")]
+    host: String,
+    #[arg(short = 'p', long = "port", default_value_t = 8080)]
+    port: u16,
+    #[arg(short = 's', long = "static-dir", default_value = "./static")]
+    static_dir: PathBuf,
+    #[arg(short = 'm', long = "max-logs", default_value_t = 1000)]
+    max_logs: usize,
+}
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(tracing_subscriber::fmt::layer())
         .init();
-    let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
-    let port: u16 = env::var("PORT")
-        .unwrap_or_else(|_| "8080".into())
-        .parse()
-        .expect("PORT must be a valid u16");
-    let static_dir = PathBuf::from(env::var("STATIC_DIR").unwrap_or_else(|_| "./static".into()));
-    let max_logs: usize = env::var("MAX_LOGS")
-        .unwrap_or_else(|_| "1000".into())
-        .parse()
-        .expect("MAX_LOGS must be a positive integer");
-    if !static_dir.exists() {
+
+    let cli = Cli::parse();
+
+    if !cli.static_dir.exists() {
         warn!(
             "Static directory '{}' does not exist — create it and add index.html",
-            static_dir.display()
+            cli.static_dir.display()
         );
     }
 
-    let state = Arc::new(AppState::new(max_logs));
-    let router = build_router(state, static_dir.clone());
+    let state = Arc::new(AppState::new(cli.max_logs));
+    let router = build_router(state, cli.static_dir.clone());
 
-    let addr: SocketAddr = format!("{}:{}", host, port)
+    let addr: SocketAddr = format!("{}:{}", cli.host, cli.port)
         .parse()
-        .expect("Invalid HOST:PORT combination");
+        .expect("Invalid --ip / --port combination");
+
     println!("{}", "=".repeat(60));
     println!("  STREAMWATCH — Log Viewer Server");
     println!("{}", "=".repeat(60));
-    println!("  Listening on  http://{}", addr);
-    println!("  Static files  {}", static_dir.display());
-    println!("  Max log buffer  {} entries", max_logs);
+    println!("  Listening on   http://{}", addr);
+    println!("  Static files   {}", cli.static_dir.display());
+    println!("  Max log buffer {} entries", cli.max_logs);
     println!();
-    println!("  POST logs to  http://{}/api/log", addr);
+    println!("  POST logs to   http://{}/api/log", addr);
     println!("{}", "=".repeat(60));
 
     info!("Binding to {}", addr);
