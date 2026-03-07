@@ -1,118 +1,257 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StreamWatch</title>
     <link
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap"
-        rel="stylesheet">
-    <link href="/style.css" rel="stylesheet">
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link href="/style.css" rel="stylesheet" />
+  </head>
 
-</head>
-
-<body>
+  <body>
     <div class="app">
-
-        <!-- HEADER -->
-        <div class="header">
-            <div class="header-brand">
-                <div class="live-dot" id="liveDot"></div>
-                <span class="brand-text">StreamWatch</span>
-                <span class="status-text" id="statusTxt">AWAITING TELEMETRY</span>
-            </div>
-
-            <!-- ─── FUZZY SEARCH ─── -->
-            <div style="display:flex;align-items:center;gap:4px;flex:1;max-width:460px;margin:0 12px;">
-                <div class="search-wrap" style="flex:1;">
-                    <svg class="search-icon" width="12" height="12" viewBox="0 0 16 16" fill="none">
-                        <circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.6" />
-                        <line x1="10.5" y1="10.5" x2="15" y2="15" stroke="currentColor" stroke-width="1.6"
-                            stroke-linecap="round" />
-                    </svg>
-                    <input class="search-inp" id="searchInp" placeholder="Fuzzy search logs… (/ or Ctrl+F)"
-                        autocomplete="off" spellcheck="false" oninput="onSearchInput()" onkeydown="onSearchKey(event)">
-                    <span class="search-counter" id="searchCounter"></span>
-                    <button class="search-clear" id="searchClear" onclick="clearSearch()"
-                        title="Clear search">✕</button>
-                    <span class="search-kbd" id="searchKbd">/</span>
-                </div>
-                <div class="search-nav">
-                    <button class="search-nav-btn" id="prevMatch" onclick="navigateMatch(-1)"
-                        title="Previous match (Shift+Enter)">▲</button>
-                    <button class="search-nav-btn" id="nextMatch" onclick="navigateMatch(1)"
-                        title="Next match (Enter)">▼</button>
-                </div>
-            </div>
-
-            <div class="header-controls">
-                <button class="btn warn-btn" id="pauseBtn" onclick="togglePause()">PAUSE</button>
-                <button class="btn" onclick="scrollBottom()">↓ BOTTOM</button>
-                <button class="btn danger" onclick="doClear()">✕ CLEAR</button>
-                <button class="btn logging-btn" id="logging" onclick="changeLogging()">logging</button>
-            </div>
+      <!-- HEADER -->
+      <div class="header">
+        <div class="header-brand">
+          <div class="live-dot" id="liveDot"></div>
+          <span class="brand-text">StreamWatch</span>
+          <span class="status-text" id="statusTxt">AWAITING TELEMETRY</span>
         </div>
 
-        <!-- STATS -->
-        <div class="stats-bar">
-            <div class="stat"><span class="stat-l">Total</span><span class="stat-v" id="sTotal">0</span></div>
-            <div class="stat"><span class="stat-l">Visible</span><span class="stat-v" id="sVis">0</span></div>
-            <div class="stat"><span class="stat-l">Warn</span><span class="stat-v c-warn" id="sWarn">0</span></div>
-            <div class="stat"><span class="stat-l">Error</span><span class="stat-v c-err" id="sErr">0</span></div>
-            <div class="stat"><span class="stat-l">Crit</span><span class="stat-v c-crit" id="sCrit">0</span></div>
-            <div class="stat"><span class="stat-l">Matches</span><span class="stat-v c-search" id="sMatches">—</span>
-            </div>
-            <div class="stat"><span class="stat-l">Updated</span><span class="stat-v" id="sTime"
-                    style="font-size:0.72rem">—</span></div>
+        <!-- ─── FUZZY SEARCH ─── -->
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex: 1;
+            max-width: 460px;
+            margin: 0 12px;
+          "
+        >
+          <div class="search-wrap" style="flex: 1">
+            <svg
+              class="search-icon"
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="none"
+            >
+              <circle
+                cx="6.5"
+                cy="6.5"
+                r="5"
+                stroke="currentColor"
+                stroke-width="1.6"
+              />
+              <line
+                x1="10.5"
+                y1="10.5"
+                x2="15"
+                y2="15"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+              />
+            </svg>
+            <input
+              class="search-inp"
+              id="searchInp"
+              placeholder="Fuzzy search logs… (/ or Ctrl+F)"
+              autocomplete="off"
+              spellcheck="false"
+              oninput="onSearchInput()"
+              onkeydown="onSearchKey(event)"
+            />
+            <span class="search-counter" id="searchCounter"></span>
+            <button
+              class="search-clear"
+              id="searchClear"
+              onclick="clearSearch()"
+              title="Clear search"
+            >
+              ✕
+            </button>
+            <span class="search-kbd" id="searchKbd">/</span>
+          </div>
+          <div class="search-nav">
+            <button
+              class="search-nav-btn"
+              id="prevMatch"
+              onclick="navigateMatch(-1)"
+              title="Previous match (Shift+Enter)"
+            >
+              ▲
+            </button>
+            <button
+              class="search-nav-btn"
+              id="nextMatch"
+              onclick="navigateMatch(1)"
+              title="Next match (Enter)"
+            >
+              ▼
+            </button>
+          </div>
         </div>
 
-        <!-- TOOLBAR -->
-        <div class="toolbar">
-            <span class="tlabel">LEVEL</span>
-            <button class="chip chip-d on" data-lvl="DEBUG" onclick="toggleChip(this)">DEBUG</button>
-            <button class="chip chip-i on" data-lvl="INFO" onclick="toggleChip(this)">INFO</button>
-            <button class="chip chip-w on" data-lvl="WARNING" onclick="toggleChip(this)">WARN</button>
-            <button class="chip chip-e on" data-lvl="ERROR" onclick="toggleChip(this)">ERROR</button>
-            <button class="chip chip-c on" data-lvl="CRITICAL" onclick="toggleChip(this)">CRIT</button>
-            <div class="sep"></div>
-            <span class="tlabel">CUSTOM</span>
-            <div id="clevelList" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
-            <input class="tag-inp" id="clevelInp" placeholder="add level…" maxlength="20"
-                onkeydown="if(event.key==='Enter')addCLevel()">
-            <button class="btn" onclick="addCLevel()" style="padding:4px 9px;">+</button>
-            <div class="sep"></div>
-            <span class="tlabel">FILTER:</span>
-            <span id="activeCLLabel" style="font-family:var(--mono);font-size:0.62rem;color:var(--text-dim);">ALL</span>
-            <button class="btn" onclick="clearCLFilter()" style="padding:3px 8px;font-size:0.58rem;">✕</button>
+        <div class="header-controls">
+          <button class="btn warn-btn" id="pauseBtn" onclick="togglePause()">
+            PAUSE
+          </button>
+          <button class="btn" onclick="scrollBottom()">↓ BOTTOM</button>
+          <button class="btn danger" onclick="doClear()">✕ CLEAR</button>
+          <button
+            class="btn logging-btn"
+            id="logging"
+            onclick="changeLogging()"
+          >
+            logging
+          </button>
         </div>
+      </div>
 
-        <!-- LOG STREAM -->
-        <div class="log-wrap">
-            <div class="log-scroll" id="logScroll">
-                <div class="empty"><span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS</div>
-            </div>
+      <!-- STATS -->
+      <div class="stats-bar">
+        <div class="stat">
+          <span class="stat-l">Total</span
+          ><span class="stat-v" id="sTotal">0</span>
         </div>
+        <div class="stat">
+          <span class="stat-l">Visible</span
+          ><span class="stat-v" id="sVis">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-l">Warn</span
+          ><span class="stat-v c-warn" id="sWarn">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-l">Error</span
+          ><span class="stat-v c-err" id="sErr">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-l">Crit</span
+          ><span class="stat-v c-crit" id="sCrit">0</span>
+        </div>
+        <div class="stat">
+          <span class="stat-l">Matches</span
+          ><span class="stat-v c-search" id="sMatches">—</span>
+        </div>
+        <div class="stat">
+          <span class="stat-l">Updated</span
+          ><span class="stat-v" id="sTime" style="font-size: 0.72rem">—</span>
+        </div>
+      </div>
+
+      <!-- TOOLBAR -->
+      <div class="toolbar">
+        <span class="tlabel">LEVEL</span>
+        <button
+          class="chip chip-d on"
+          data-lvl="DEBUG"
+          onclick="toggleChip(this)"
+        >
+          DEBUG
+        </button>
+        <button
+          class="chip chip-i on"
+          data-lvl="INFO"
+          onclick="toggleChip(this)"
+        >
+          INFO
+        </button>
+        <button
+          class="chip chip-w on"
+          data-lvl="WARNING"
+          onclick="toggleChip(this)"
+        >
+          WARN
+        </button>
+        <button
+          class="chip chip-e on"
+          data-lvl="ERROR"
+          onclick="toggleChip(this)"
+        >
+          ERROR
+        </button>
+        <button
+          class="chip chip-c on"
+          data-lvl="CRITICAL"
+          onclick="toggleChip(this)"
+        >
+          CRIT
+        </button>
+        <div class="sep"></div>
+        <span class="tlabel">CUSTOM</span>
+        <div
+          id="clevelList"
+          style="display: flex; gap: 4px; flex-wrap: wrap"
+        ></div>
+        <input
+          class="tag-inp"
+          id="clevelInp"
+          placeholder="add level…"
+          maxlength="20"
+          onkeydown="if (event.key === 'Enter') addCLevel();"
+        />
+        <button class="btn" onclick="addCLevel()" style="padding: 4px 9px">
+          +
+        </button>
+        <div class="sep"></div>
+        <span class="tlabel">FILTER:</span>
+        <span
+          id="activeCLLabel"
+          style="
+            font-family: var(--mono);
+            font-size: 0.62rem;
+            color: var(--text-dim);
+          "
+          >ALL</span
+        >
+        <button
+          class="btn"
+          onclick="clearCLFilter()"
+          style="padding: 3px 8px; font-size: 0.58rem"
+        >
+          ✕
+        </button>
+      </div>
+
+      <!-- LOG STREAM -->
+      <div class="log-wrap">
+        <div class="log-scroll" id="logScroll">
+          <div class="empty">
+            <span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- JSON MODAL -->
     <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
-        <div class="modal">
-            <div class="modal-header">
-                <div class="modal-title">◈ JSON DATA<span class="modal-meta" id="modalMeta"></span></div>
-                <div class="modal-acts">
-                    <button class="btn" onclick="expandAll()">EXPAND ALL</button>
-                    <button class="btn" onclick="collapseAll()">COLLAPSE ALL</button>
-                    <button class="btn" id="modalCopyBtn" onclick="copyModalJson()">⎘ COPY JSON</button>
-                    <button class="btn danger" onclick="closeModalDirect()">✕ CLOSE</button>
-                </div>
-            </div>
-            <div class="modal-body" id="modalBody"></div>
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">
+            ◈ JSON DATA<span class="modal-meta" id="modalMeta"></span>
+          </div>
+          <div class="modal-acts">
+            <button class="btn" onclick="expandAll()">EXPAND ALL</button>
+            <button class="btn" onclick="collapseAll()">COLLAPSE ALL</button>
+            <button class="btn" id="modalCopyBtn" onclick="copyModalJson()">
+              ⎘ COPY JSON
+            </button>
+            <button class="btn danger" onclick="closeModalDirect()">
+              ✕ CLOSE
+            </button>
+          </div>
         </div>
+        <div class="modal-body" id="modalBody"></div>
+      </div>
     </div>
 
     <div class="toast" id="toast"></div>
     <script src="/app.js"></script>
-</body>
-
+  </body>
 </html>
