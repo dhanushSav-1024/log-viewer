@@ -1,8 +1,9 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use chrono::Local;
-use clap::Parser;
-use log_view::{AppState, IncomingLog, LogEntry, LogsResponse, StatusResponse};
+use log_view::{
+    AppState, IncomingLog, LogEntry, LogsResponse, StatusResponse, StatusResponseLoging,
+};
 use rust_embed::RustEmbed;
 
 use axum::{
@@ -28,15 +29,19 @@ async fn serve_static(uri: Uri) -> Response {
             let mime = mime_guess::from_path(path)
                 .first_or_octet_stream()
                 .to_string();
-            (StatusCode::OK, [(header::CONTENT_TYPE, mime)], file.data).into_response()
+            let bytes: Vec<u8> = file.data.into_owned();
+            (StatusCode::OK, [(header::CONTENT_TYPE, mime)], bytes).into_response()
         }
         None => match StaticAssets::get("index.html") {
-            Some(file) => (
-                StatusCode::OK,
-                [(header::CONTENT_TYPE, "text/html; charset=utf-8".to_string())],
-                file.data,
-            )
-                .into_response(),
+            Some(file) => {
+                let bytes: Vec<u8> = file.data.into_owned();
+                (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8".to_string())],
+                    bytes,
+                )
+                    .into_response()
+            }
             None => (StatusCode::NOT_FOUND, "404 — not found").into_response(),
         },
     }
@@ -58,7 +63,6 @@ async fn handle_post_log(
         Some(serde_json::Value::String(s)) => s.clone(),
         _ => String::new(),
     };
-
     let entry = LogEntry {
         time: body.time.clone().unwrap_or(now),
         level: body.level.clone().unwrap_or_else(|| "INFO".into()),
@@ -67,7 +71,6 @@ async fn handle_post_log(
         filename: body.filename.clone().unwrap_or_default(),
         lineno,
     };
-
     state.push(entry);
     (
         StatusCode::OK,
@@ -77,6 +80,32 @@ async fn handle_post_log(
         }),
     )
 }
+
+async fn sender_status(State(state): State<SharedState>) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "connected": state.is_sender_connected()
+    }))
+}
+
+async fn change_logging(State(state): State<SharedState>) -> impl IntoResponse {
+    let new_logging = state.toggle_logging();
+    (
+        StatusCode::OK,
+        Json(StatusResponseLoging {
+            status: "success",
+            logging: new_logging,
+        }),
+    )
+}
+
+async fn logging_status(State(state): State<SharedState>) -> impl IntoResponse {
+    let logging = state.options.lock().unwrap().logging;
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "logging": logging })),
+    )
+}
+
 async fn handle_clear(State(state): State<SharedState>) -> impl IntoResponse {
     state.clear();
     (
@@ -107,6 +136,9 @@ fn build_router(state: SharedState) -> Router {
         .route("/logs", get(handle_get_logs))
         .route("/log", post(handle_post_log))
         .route("/clear", post(handle_clear))
+        .route("/change_logging", post(change_logging))
+        .route("/logging_status", get(logging_status))
+        .route("/sender_status", get(sender_status))
         .fallback(handle_not_found)
         .with_state(state);
 
@@ -116,21 +148,6 @@ fn build_router(state: SharedState) -> Router {
         .layer(cors)
 }
 
-#[derive(Parser, Debug)]
-#[command(
-    name = "streamwatch",
-    about = "StreamWatch — Log Viewer Server",
-    version
-)]
-struct Cli {
-    #[arg(short = 'i', long = "ip", default_value = "0.0.0.0")]
-    host: String,
-    #[arg(short = 'p', long = "port", default_value_t = 8080)]
-    port: u16,
-    #[arg(short = 'm', long = "max-logs", default_value_t = 1000)]
-    max_logs: usize,
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -138,21 +155,38 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let cli = Cli::parse();
+    let state = Arc::new(AppState::new());
 
-    let state = Arc::new(AppState::new(cli.max_logs));
-    let router = build_router(state);
+    let state_watch = Arc::clone(&state);
+    tokio::spawn(async move {
+        let mut was_connected = false;
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            let now_connected = state_watch.is_sender_connected();
+            if was_connected && !now_connected {
+                println!("  [SENDER] disconnected");
+            }
+            was_connected = now_connected;
+        }
+    });
 
-    let addr: SocketAddr = format!("{}:{}", cli.host, cli.port)
+    let (host, port, max_logs) = {
+        let opts = state.options.lock().expect("options poisoned");
+        (opts.host.clone(), opts.port, opts.max_logs)
+    };
+
+    let addr: SocketAddr = format!("{}:{}", host, port)
         .parse()
         .expect("Invalid --ip / --port combination");
+
+    let router = build_router(state);
 
     println!("{}", "=".repeat(60));
     println!("  STREAMWATCH — Log Viewer Server");
     println!("{}", "=".repeat(60));
     println!("  Listening on   http://{}", addr);
     println!("  Static assets  embedded in binary");
-    println!("  Max log buffer {} entries", cli.max_logs);
+    println!("  Max log buffer {} entries", max_logs);
     println!();
     println!("  POST logs to   http://{}/api/log", addr);
     println!("{}", "=".repeat(60));

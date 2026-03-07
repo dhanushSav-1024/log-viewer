@@ -603,6 +603,7 @@ dependencies = [
  "axum-extra",
  "chrono",
  "clap",
+ "log",
  "mime_guess",
  "rust-embed",
  "serde",

@@ -8,9 +8,8 @@
     <link
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet">
-    <style>
+    <link href="/style.css" rel="stylesheet">
 
-    </style>
 </head>
 
 <body>
@@ -48,9 +47,10 @@
             </div>
 
             <div class="header-controls">
-                <button class="btn warn-btn" id="pauseBtn" onclick="togglePause()">⏸ PAUSE</button>
+                <button class="btn warn-btn" id="pauseBtn" onclick="togglePause()">PAUSE</button>
                 <button class="btn" onclick="scrollBottom()">↓ BOTTOM</button>
                 <button class="btn danger" onclick="doClear()">✕ CLEAR</button>
+                <button class="btn logging-btn" id="logging" onclick="changeLogging()">logging</button>
             </div>
         </div>
 
@@ -112,6 +112,7 @@
     </div>
 
     <div class="toast" id="toast"></div>
+    <script src="/app.js"></script>
 </body>
 
 </html>

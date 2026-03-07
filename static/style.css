@@ -13,6 +13,7 @@
     --debug: #555555;
     --info: #ffffff;
     --warning: #f5a623;
+    --logging: #7bf523;
     --error: #ff4444;
     --critical: #ff0000;
     --custom: #b08cff;
@@ -451,6 +452,17 @@ mark.hl.hl-active {
 .btn.warn-btn:hover,
 .btn.warn-btn.active {
     background: var(--warning);
+    color: #000;
+}
+
+.btn.logging-btn {
+    border-color: var(--logging);
+    color: var(--logging);
+}
+
+.btn.logging-btn:hover,
+.btn.logging-btn.active {
+    background: var(--logging);
     color: #000;
 }
 

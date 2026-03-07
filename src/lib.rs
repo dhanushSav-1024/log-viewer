@@ -1,5 +1,6 @@
+use clap::Parser;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, sync::Mutex};
+use std::{collections::VecDeque, io::Write, path::PathBuf, sync::Mutex, time::Instant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -33,31 +34,120 @@ pub struct StatusResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
+#[derive(Serialize)]
+pub struct StatusResponseLoging {
+    pub status: &'static str,
+    pub logging: bool,
+}
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "streamwatch",
+    about = "StreamWatch — Log Viewer Server",
+    version
+)]
+pub struct Cli {
+    #[arg(short = 'i', long = "ip", default_value = "0.0.0.0")]
+    pub host: String,
+    #[arg(short = 'p', long = "port", default_value_t = 8080)]
+    pub port: u16,
+    #[arg(short = 'm', long = "max-logs", default_value_t = 1000)]
+    pub max_logs: usize,
+    /// store loges in /home/user/logeg
+    #[arg(short = 'l', long = "logging", default_value_t = false)]
+    pub logging: bool,
+}
 
 #[derive(Debug)]
 pub struct AppState {
-    logs: Mutex<VecDeque<LogEntry>>,
-    max_logs: usize,
+    pub logs: Mutex<VecDeque<LogEntry>>,
+    pub options: Mutex<Cli>,
+    pub log_file: Mutex<Option<std::fs::File>>,
+    pub last_seen: Mutex<Option<Instant>>,
 }
 
 impl AppState {
-    pub fn new(max_logs: usize) -> Self {
+    pub fn new() -> Self {
+        let options = Cli::parse();
+        let log_file = if options.logging {
+            Some(Self::create_log_file())
+        } else {
+            None
+        };
         Self {
-            logs: Mutex::new(VecDeque::with_capacity(max_logs)),
-            max_logs,
+            logs: Mutex::new(VecDeque::with_capacity(options.max_logs)),
+            options: Mutex::new(options),
+            log_file: Mutex::new(log_file),
+            last_seen: Mutex::new(None),
         }
     }
+
+    pub fn touch(&self) {
+        *self.last_seen.lock().expect("last_seen poisoned") = Some(Instant::now());
+    }
+
+    pub fn is_sender_connected(&self) -> bool {
+        match *self.last_seen.lock().expect("last_seen poisoned") {
+            Some(t) => t.elapsed().as_secs() < 5,
+            None => false,
+        }
+    }
+
+    fn create_log_file() -> std::fs::File {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        let dir = PathBuf::from(home).join("streamwatch");
+        std::fs::create_dir_all(&dir).expect("failed to create log dir");
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let path = dir.join(format!("logs-{}.log", timestamp));
+        println!("  Log file: {}", path.display());
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("failed to open log file")
+    }
+
     pub fn push(&self, entry: LogEntry) {
-        let mut guard = self.logs.lock().expect("log mutex poisoned");
-        if guard.len() >= self.max_logs {
+        let was_connected = self.is_sender_connected();
+        self.touch();
+
+        if !was_connected {
+            println!("  [LOGGER] connected");
+        }
+
+        let max = self.options.lock().expect("options poisoned").max_logs;
+        let mut guard = self.logs.lock().expect("logs poisoned");
+        if guard.len() >= max {
             guard.pop_front();
+        }
+        if let Ok(mut file_guard) = self.log_file.lock() {
+            if let Some(ref mut file) = *file_guard {
+                let _ = writeln!(file, "{}", entry.message);
+            }
         }
         guard.push_back(entry);
     }
+
+    pub fn toggle_logging(&self) -> bool {
+        let mut options = self.options.lock().expect("options poisoned");
+        options.logging = !options.logging;
+        let enabled = options.logging;
+        drop(options); // release before locking file
+
+        let mut file_guard = self.log_file.lock().expect("file poisoned");
+        if enabled {
+            *file_guard = Some(Self::create_log_file());
+        } else {
+            *file_guard = None; // closes the file
+        }
+        enabled
+    }
+
     pub fn snapshot(&self) -> Vec<LogEntry> {
         let guard = self.logs.lock().expect("log mutex poisoned");
         guard.iter().cloned().collect()
     }
+
     pub fn clear(&self) {
         let mut guard = self.logs.lock().expect("log mutex poisoned");
         guard.clear();

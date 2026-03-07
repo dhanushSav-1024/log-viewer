@@ -284,11 +284,11 @@ function togglePause() {
     const btn = document.getElementById('pauseBtn');
     const dot = document.getElementById('liveDot');
     if (paused) {
-        btn.textContent = '▶ RESUME'; btn.classList.add('active');
+        btn.textContent = 'RESUME'; btn.classList.add('active');
         dot.classList.add('paused');
         document.getElementById('statusTxt').textContent = 'PAUSED';
     } else {
-        btn.textContent = '⏸ PAUSE'; btn.classList.remove('active');
+        btn.textContent = 'PAUSE'; btn.classList.remove('active');
         dot.classList.remove('paused');
         document.getElementById('statusTxt').textContent = 'LIVE';
         fetchLogs();
@@ -548,6 +548,48 @@ function doClear() {
         document.getElementById('sVis').textContent = 0;
     });
 }
+
+
+async function changeLogging() {
+    try {
+        const res = await fetch("api/change_logging", { method: "POST" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const el = document.getElementById('logging');
+
+        el.textContent = data.logging ? "logging ON" : "logging OFF";
+
+        if (data.logging) {
+            el.classList.add("active");
+        } else {
+            el.classList.remove("active");
+        }
+    } catch (e) {
+        console.error("changeLogging failed:", e);
+    }
+}
+
+window.addEventListener('load', async () => {
+    try {
+        const res = await fetch("api/logging_status");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const el = document.getElementById('logging');
+
+        el.textContent = data.logging ? "logging ON" : "logging OFF";
+
+        if (data.logging) {
+            el.classList.add("active");
+        } else {
+            el.classList.remove("active");
+        }
+    } catch (e) {
+        console.error("logging_status failed:", e);
+        document.getElementById('logging').textContent = "logging ?";
+    }
+});
+
+
 function copyEntry(idx) {
     const log = allLogs[idx]; if (!log) return;
     const txt = `[${log.time}] [${log.level}] ${log.message}` + (log.logger ? ` | ${log.logger} ${log.filename}:${log.lineno}` : '');
