@@ -41,11 +41,7 @@ pub struct StatusResponseLoging {
 }
 
 #[derive(Parser, Debug)]
-#[command(
-    name = "streamwatch",
-    about = "StreamWatch — Log Viewer Server",
-    version
-)]
+#[command(name = "log-view", about = "log-view — Log Viewer Server", version)]
 pub struct Cli {
     #[arg(short = 'i', long = "ip", default_value = "0.0.0.0")]
     pub host: String,
