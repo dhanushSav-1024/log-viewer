@@ -38,6 +38,7 @@ Open **http://localhost:8080** in your browser — that's it.
 | `-i` | `0.0.0.0` | Bind address |
 | `-p` | `8080` | Port |
 | `-m` | `1000` | Max logs in buffer |
+| `-u` | `9000` | udp log listener port |
 | `-l` | off | Save logs to file |
 
 ## Features
