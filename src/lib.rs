@@ -53,6 +53,9 @@ pub struct Cli {
     /// store loges in /home/user/logeg
     #[arg(short = 'l', long = "logging", default_value_t = false)]
     pub logging: bool,
+    /// Listen for log entries over UDP on this port (e.g. -u 9000)
+    #[arg(short = 'u', long = "udp-port")]
+    pub udp_port: Option<u16>,
 }
 
 #[derive(Debug)]

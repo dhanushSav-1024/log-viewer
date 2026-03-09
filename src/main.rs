@@ -127,25 +127,27 @@ async fn handle_not_found() -> impl IntoResponse {
     )
 }
 
-fn build_router(state: SharedState) -> Router {
+fn build_router(state: SharedState, tcp_mode: bool) -> Router {
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
         .allow_headers(Any)
         .allow_origin(Any);
 
-    let api = Router::new()
+    let mut api = Router::new()
         .route("/logs", get(handle_get_logs))
-        .route("/log", post(handle_post_log))
         .route("/clear", post(handle_clear))
         .route("/change_logging", post(change_logging))
         .route("/logging_status", get(logging_status))
         .route("/sender_status", get(sender_status))
-        .fallback(handle_not_found)
-        .with_state(state);
+        .fallback(handle_not_found);
+
+    if tcp_mode {
+        api = api.route("/log", post(handle_post_log));
+    }
 
     Router::new()
-        .nest("/api", api)
-        .fallback(serve_static) // all other paths → embedded static/
+        .nest("/api", api.with_state(state))
+        .fallback(serve_static)
         .layer(cors)
 }
 
@@ -171,16 +173,64 @@ async fn main() {
         }
     });
 
-    let (host, port, max_logs) = {
+    let (host, port, max_logs, udp_port) = {
         let opts = state.options.lock().expect("options poisoned");
-        (opts.host.clone(), opts.port, opts.max_logs)
+        (opts.host.clone(), opts.port, opts.max_logs, opts.udp_port)
     };
+
+    if let Some(udp_port) = udp_port {
+        let udp_addr = format!("{}:{}", host, udp_port);
+        let state_udp = Arc::clone(&state);
+
+        tokio::spawn(async move {
+            let socket = tokio::net::UdpSocket::bind(&udp_addr)
+                .await
+                .expect("Failed to bind UDP socket");
+
+            info!("UDP listener on {}", udp_addr);
+            println!("  UDP logs at    udp://{}", udp_addr);
+
+            let mut buf = vec![0u8; 65_535];
+            loop {
+                match socket.recv_from(&mut buf).await {
+                    Err(e) => {
+                        warn!("[UDP] recv error: {e}");
+                    }
+                    Ok((len, peer)) => {
+                        let slice = &buf[..len];
+                        match serde_json::from_slice::<IncomingLog>(slice) {
+                            Err(e) => {
+                                warn!("[UDP] bad JSON from {peer}: {e}");
+                            }
+                            Ok(incoming) => {
+                                let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                                let lineno = match &incoming.lineno {
+                                    Some(serde_json::Value::Number(n)) => n.to_string(),
+                                    Some(serde_json::Value::String(s)) => s.clone(),
+                                    _ => String::new(),
+                                };
+                                let entry = LogEntry {
+                                    time: incoming.time.unwrap_or(now),
+                                    level: incoming.level.unwrap_or_else(|| "INFO".into()),
+                                    message: incoming.message.unwrap_or_default(),
+                                    logger: incoming.logger.unwrap_or_default(),
+                                    filename: incoming.filename.unwrap_or_default(),
+                                    lineno,
+                                };
+                                state_udp.push(entry);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     let addr: SocketAddr = format!("{}:{}", host, port)
         .parse()
         .expect("Invalid --ip / --port combination");
 
-    let router = build_router(state);
+    let router = build_router(state, udp_port.is_none());
 
     println!("{}", "=".repeat(60));
     println!("  log-view — Log Viewer Server");
