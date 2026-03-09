@@ -1,15 +1,9 @@
-const LEVELS = {
-  DEBUG: true,
-  INFO: true,
-  WARNING: true,
-  ERROR: true,
-  CRITICAL: true,
-};
+let selectedLevels = new Set();
+
 const BUILTINS = new Set(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]);
 let paused = false;
 let allLogs = [];
 let renderedCount = 0;
-let activeCLevel = null;
 let customLevels = [];
 let modalJson = null;
 let reconnectTimer = null;
@@ -44,8 +38,8 @@ function fuzzyMatch(text, query) {
   }
   if (qi < qL.length) return null;
 
-  let score = 0;
-  let consecutive = 0;
+  let score = 0,
+    consecutive = 0;
   for (let i = 0; i < indices.length; i++) {
     const idx = indices[i];
     const isWordStart =
@@ -64,14 +58,13 @@ function fuzzyMatch(text, query) {
 function buildHighlightHtml(text, indices) {
   if (!indices || !indices.length) return esc(text);
   const idxSet = new Set(indices);
-  let html = "";
-  let i = 0;
+  let html = "",
+    i = 0;
   while (i < text.length) {
     if (idxSet.has(i)) {
       let runEnd = i;
       while (runEnd + 1 < text.length && idxSet.has(runEnd + 1)) runEnd++;
-      const chunk = esc(text.slice(i, runEnd + 1));
-      html += `<mark class="hl">${chunk}</mark>`;
+      html += `<mark class="hl">${esc(text.slice(i, runEnd + 1))}</mark>`;
       i = runEnd + 1;
     } else {
       let runEnd = i;
@@ -87,10 +80,10 @@ function onSearchInput() {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(applySearch, 80);
   const q = document.getElementById("searchInp").value;
-  const clearBtn = document.getElementById("searchClear");
-  const kbdHint = document.getElementById("searchKbd");
-  clearBtn.classList.toggle("visible", q.length > 0);
-  kbdHint.classList.toggle("hidden", q.length > 0);
+  document
+    .getElementById("searchClear")
+    .classList.toggle("visible", q.length > 0);
+  document.getElementById("searchKbd").classList.toggle("hidden", q.length > 0);
 }
 
 function onSearchKey(e) {
@@ -112,54 +105,91 @@ function clearSearch() {
   applySearch();
 }
 
+// ─── RESTORE ORIGINAL DOM ORDER ───
+function restoreOrder(scroll) {
+  const entries = Array.from(scroll.querySelectorAll(".le"));
+  entries.sort((a, b) => {
+    const ai = parseInt(a.id.replace("le", ""), 10) || 0;
+    const bi = parseInt(b.id.replace("le", ""), 10) || 0;
+    return ai - bi;
+  });
+  const frag = document.createDocumentFragment();
+  entries.forEach((el) => frag.appendChild(el));
+  scroll.appendChild(frag);
+}
+
 function applySearch() {
   searchQuery = document.getElementById("searchInp").value.trim();
   matchElements = [];
   activeMatchIdx = -1;
 
-  const entries = document.querySelectorAll("#logScroll .le");
-  let totalMatches = 0;
+  const scroll = document.getElementById("logScroll");
+  const entries = Array.from(scroll.querySelectorAll(".le"));
 
-  entries.forEach((el, entryIdx) => {
-    const msgEl = el.querySelector(".le-msg");
-    if (!msgEl) return;
-
-    const originalText = msgEl.dataset.originalText;
-    if (originalText === undefined) return;
-
-    const levelHidden = el.style.display === "none";
-
-    if (!searchQuery) {
-      msgEl.innerHTML = esc(originalText);
-      el.classList.remove("search-match", "search-no-match");
-      return;
-    }
-
-    const result = fuzzyMatch(originalText, searchQuery);
-
-    if (result && !levelHidden) {
-      el.classList.add("search-match");
-      el.classList.remove("search-no-match");
-      msgEl.innerHTML = buildHighlightHtml(originalText, result.indices);
-      const marks = msgEl.querySelectorAll("mark.hl");
-      marks.forEach((m) => {
-        m.dataset.entryIdx = entryIdx;
-        m.dataset.matchIdx = totalMatches++;
-        matchElements.push(m);
-      });
-    } else {
-      el.classList.remove("search-match");
-      if (!levelHidden && searchQuery) {
-        el.classList.add("search-no-match");
+  if (!searchQuery) {
+    restoreOrder(scroll);
+    scroll.querySelectorAll(".le").forEach((el) => {
+      const msgEl = el.querySelector(".le-msg");
+      if (msgEl && msgEl.dataset.originalText !== undefined) {
+        msgEl.innerHTML = esc(msgEl.dataset.originalText);
       }
+      el.classList.remove("search-match", "search-no-match");
+    });
+    updateSearchCounter(0);
+    document.getElementById("sMatches").textContent = "—";
+    return;
+  }
+
+  const scored = entries.map((el) => {
+    const msgEl = el.querySelector(".le-msg");
+    const originalText = msgEl?.dataset.originalText;
+    const levelHidden = el.style.display === "none";
+    if (!msgEl || originalText === undefined || levelHidden) {
+      return { el, msgEl, originalText, result: null, levelHidden };
     }
+    const result = fuzzyMatch(originalText, searchQuery);
+    return { el, msgEl, originalText, result, levelHidden: false };
+  });
+
+  let maxScore = 0;
+  scored.forEach((s) => {
+    if (s.result && s.result.score > maxScore) maxScore = s.result.score;
+  });
+  const threshold = maxScore * 0.7;
+
+  const matched = scored.filter((s) => s.result && s.result.score >= threshold);
+  const rest = scored.filter((s) => !s.result || s.result.score < threshold);
+
+  matched.sort((a, b) => b.result.score - a.result.score);
+
+  const frag = document.createDocumentFragment();
+  matched.forEach(({ el }) => frag.appendChild(el));
+  rest.forEach(({ el }) => frag.appendChild(el));
+  scroll.appendChild(frag);
+
+  let totalMatches = 0;
+  matched.forEach(({ el, msgEl, originalText, result }) => {
+    el.classList.add("search-match");
+    el.classList.remove("search-no-match");
+    el.style.display = "";
+    msgEl.innerHTML = buildHighlightHtml(originalText, result.indices);
+    const marks = msgEl.querySelectorAll("mark.hl");
+    marks.forEach((m) => {
+      m.dataset.matchIdx = totalMatches++;
+      matchElements.push(m);
+    });
+  });
+
+  rest.forEach(({ el, msgEl, originalText, levelHidden }) => {
+    if (levelHidden) return;
+    el.classList.remove("search-match");
+    el.classList.add("search-no-match");
+    if (msgEl && originalText !== undefined)
+      msgEl.innerHTML = esc(originalText);
   });
 
   updateSearchCounter(totalMatches);
-  document.getElementById("sMatches").textContent = searchQuery
-    ? totalMatches
-    : "—";
-
+  document.getElementById("sMatches").textContent = totalMatches;
   if (totalMatches > 0) {
     activeMatchIdx = 0;
     setActiveMatch(0);
@@ -186,7 +216,6 @@ function updateSearchCounter(total) {
   const counter = document.getElementById("searchCounter");
   const prevBtn = document.getElementById("prevMatch");
   const nextBtn = document.getElementById("nextMatch");
-
   if (!searchQuery) {
     counter.textContent = "";
     counter.className = "search-counter";
@@ -210,11 +239,9 @@ function updateSearchCounter(total) {
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (document.getElementById("modalOverlay").classList.contains("open")) {
+    if (document.getElementById("modalOverlay").classList.contains("open"))
       closeModalDirect();
-    } else {
-      clearSearch();
-    }
+    else clearSearch();
     return;
   }
   const tag = document.activeElement.tagName;
@@ -243,6 +270,92 @@ const ck = {
   },
 };
 
+// ─── UNIFIED LEVEL FILTER ───
+
+function toggleChip(btn) {
+  const lvl = btn.dataset.lvl;
+  if (selectedLevels.has(lvl)) selectedLevels.delete(lvl);
+  else selectedLevels.add(lvl);
+  btn.classList.toggle("on", selectedLevels.has(lvl));
+  syncToolbarState();
+  updateFilterLabel();
+  saveSelectedLevels();
+  refilter();
+}
+
+function filterByCLevel(t) {
+  if (selectedLevels.has(t)) selectedLevels.delete(t);
+  else selectedLevels.add(t);
+  syncToolbarState();
+  updateFilterLabel();
+  renderCLevels();
+  refilter();
+}
+
+// Clear all level filters (bound to the ✕ button in HTML)
+function clearCLFilter() {
+  selectedLevels.clear();
+  document
+    .querySelectorAll(".chip[data-lvl]")
+    .forEach((btn) => btn.classList.remove("on"));
+  syncToolbarState();
+  updateFilterLabel();
+  renderCLevels();
+  refilter();
+}
+
+// Adds/removes .has-filter on toolbar so CSS can dim unselected chips
+function syncToolbarState() {
+  document
+    .querySelector(".toolbar")
+    .classList.toggle("has-filter", selectedLevels.size > 0);
+}
+
+// Show "ALL" or a concise list of what's selected
+function updateFilterLabel() {
+  const el = document.getElementById("activeCLLabel");
+  if (selectedLevels.size === 0) {
+    el.textContent = "ALL";
+    return;
+  }
+  const ordered = [
+    ...[...BUILTINS].filter((l) => selectedLevels.has(l)),
+    ...customLevels.filter((l) => selectedLevels.has(l)),
+  ];
+  el.textContent =
+    ordered.length <= 3
+      ? ordered.join(" · ")
+      : ordered.slice(0, 3).join(" · ") + ` +${ordered.length - 3}`;
+}
+
+// Legacy alias used nowhere internally but kept for safety
+function updateCLLabel() {
+  updateFilterLabel();
+}
+
+function saveSelectedLevels() {
+  ck.set("sw_sel_levels", [...selectedLevels]);
+}
+
+function loadLevels() {
+  // Strip the HTML-default "on" classes — state is driven from here only
+  document
+    .querySelectorAll(".chip[data-lvl]")
+    .forEach((btn) => btn.classList.remove("on"));
+
+  const saved = ck.get("sw_sel_levels");
+  if (saved && Array.isArray(saved))
+    saved.forEach((l) => selectedLevels.add(l));
+
+  document.querySelectorAll(".chip[data-lvl]").forEach((btn) => {
+    btn.classList.toggle("on", selectedLevels.has(btn.dataset.lvl));
+  });
+  syncToolbarState();
+  updateFilterLabel();
+}
+
+// ─── CUSTOM LEVELS ───
+
 function loadCLevels() {
   customLevels = ck.get("sw_clevels") || [];
   renderCLevels();
@@ -250,6 +363,7 @@ function loadCLevels() {
 function saveCLevels() {
   ck.set("sw_clevels", customLevels);
 }
+
 function addCLevel() {
   const inp = document.getElementById("clevelInp");
   const val = inp.value.trim().toUpperCase();
@@ -259,58 +373,32 @@ function addCLevel() {
   renderCLevels();
   inp.value = "";
 }
+
 function removeCLevel(t) {
   customLevels = customLevels.filter((x) => x !== t);
-  if (activeCLevel === t) {
-    activeCLevel = null;
-    updateCLLabel();
+  if (selectedLevels.has(t)) {
+    selectedLevels.delete(t);
+    syncToolbarState();
+    updateFilterLabel();
+    saveSelectedLevels();
   }
   saveCLevels();
   renderCLevels();
   refilter();
 }
-function filterByCLevel(t) {
-  activeCLevel = activeCLevel === t ? null : t;
-  updateCLLabel();
-  renderCLevels();
-  refilter();
-}
-function clearCLFilter() {
-  activeCLevel = null;
-  updateCLLabel();
-  renderCLevels();
-  refilter();
-}
-function updateCLLabel() {
-  document.getElementById("activeCLLabel").textContent = activeCLevel || "ALL";
-}
+
 function renderCLevels() {
   document.getElementById("clevelList").innerHTML = customLevels
     .map(
       (t) => `
-    <span class="clevel${activeCLevel === t ? " on" : ""}" onclick="filterByCLevel('${t}')">
+    <span class="clevel${selectedLevels.has(t) ? " on" : ""}" onclick="filterByCLevel('${t}')">
       ${t}<span class="clevel-x" onclick="event.stopPropagation();removeCLevel('${t}')">✕</span>
     </span>`,
     )
     .join("");
 }
-function toggleChip(btn) {
-  const lvl = btn.dataset.lvl;
-  LEVELS[lvl] = !LEVELS[lvl];
-  btn.classList.toggle("on", LEVELS[lvl]);
-  ck.set("sw_levels", LEVELS);
-  refilter();
-}
-function loadLevels() {
-  const saved = ck.get("sw_levels");
-  if (!saved) return;
-  Object.keys(saved).forEach((k) => {
-    if (k in LEVELS) LEVELS[k] = saved[k];
-  });
-  document.querySelectorAll(".chip[data-lvl]").forEach((btn) => {
-    btn.classList.toggle("on", LEVELS[btn.dataset.lvl]);
-  });
-}
+
+// ─── PAUSE / RESUME ───
 
 function togglePause() {
   paused = !paused;
@@ -330,6 +418,8 @@ function togglePause() {
     fetchLogs();
   }
 }
+
+// ─── PYTHON → JSON COERCION ───
 
 function pyToJson(s) {
   try {
@@ -439,6 +529,8 @@ function extractAllJSON(msg) {
   return blocks;
 }
 
+// ─── JSON TREE ───
+
 function jLeaf(data) {
   if (data === null) return `<span class="jnull">null</span>`;
   if (typeof data === "boolean") return `<span class="jbool">${data}</span>`;
@@ -491,8 +583,7 @@ function jTree(data, prefix, depth = 0) {
 function jtog(id, el) {
   const c = document.getElementById(id);
   if (!c) return;
-  const open = c.classList.toggle("open");
-  el.textContent = open ? "▾" : "▸";
+  el.textContent = c.classList.toggle("open") ? "▾" : "▸";
 }
 function expandAll() {
   document
@@ -510,6 +601,8 @@ function collapseAll() {
     .querySelectorAll("#modalBody .jtoggle:not(.spacer)")
     .forEach((el) => (el.textContent = "▸"));
 }
+
+// ─── MODAL ───
 
 function openModal(logIdx) {
   const log = allLogs[logIdx];
@@ -556,6 +649,8 @@ function copyModalJson() {
   });
 }
 
+// ─── INLINE PARSE PANEL ───
+
 function toggleParsePanel(idx) {
   const panel = document.getElementById("pp" + idx);
   if (!panel) return;
@@ -583,6 +678,8 @@ function toggleParsePanel(idx) {
   panel.style.display = visible ? "none" : "block";
   if (btn) btn.classList.toggle("active", !visible);
 }
+
+// ─── ENTRY RENDERING ───
 
 function makeEntry(log, idx) {
   const lvlU = log.level.toUpperCase();
@@ -641,6 +738,10 @@ function applyLogs(newLogs) {
   if (atBottom) scroll.scrollTop = scroll.scrollHeight;
 }
 
+// ─── UNIFIED REFILTER ───
+// selectedLevels.size === 0 → show everything
+// otherwise → show only entries whose level is in selectedLevels
+
 function refilter() {
   let vis = 0,
     warn = 0,
@@ -654,9 +755,7 @@ function refilter() {
   });
   document.querySelectorAll("#logScroll .le").forEach((el) => {
     const lvl = el.dataset.level;
-    const chipOk = BUILTINS.has(lvl) ? LEVELS[lvl] || false : true;
-    const clevelOk = !activeCLevel || lvl === activeCLevel;
-    const show = chipOk && clevelOk;
+    const show = selectedLevels.size === 0 || selectedLevels.has(lvl);
     el.style.display = show ? "" : "none";
     if (show) vis++;
   });
@@ -667,7 +766,8 @@ function refilter() {
   if (searchQuery) applySearch();
 }
 
-// ─── FETCH LOOP — runs forever, retries on failure ───
+// ─── FETCH LOOP ───
+
 function fetchLogs() {
   if (paused) return;
   fetch("/api/logs")
@@ -682,11 +782,11 @@ function fetchLogs() {
       document.getElementById("sTime").textContent =
         new Date().toLocaleTimeString();
       document.getElementById("statusTxt").textContent = "LIVE";
-      reconnectTimer = setTimeout(fetchLogs, 2000); // normal poll interval
+      reconnectTimer = setTimeout(fetchLogs, 2000);
     })
     .catch(() => {
       document.getElementById("statusTxt").textContent = "NO CONNECTION";
-      reconnectTimer = setTimeout(fetchLogs, 500); // fast retry on failure
+      reconnectTimer = setTimeout(fetchLogs, 500);
     });
 }
 
@@ -722,11 +822,7 @@ async function changeLogging() {
     const data = await res.json();
     const el = document.getElementById("logging");
     el.textContent = data.logging ? "logging ON" : "logging OFF";
-    if (data.logging) {
-      el.classList.add("active");
-    } else {
-      el.classList.remove("active");
-    }
+    data.logging ? el.classList.add("active") : el.classList.remove("active");
   } catch (e) {
     console.error("changeLogging failed:", e);
   }
@@ -739,11 +835,7 @@ window.addEventListener("load", async () => {
     const data = await res.json();
     const el = document.getElementById("logging");
     el.textContent = data.logging ? "logging ON" : "logging OFF";
-    if (data.logging) {
-      el.classList.add("active");
-    } else {
-      el.classList.remove("active");
-    }
+    data.logging ? el.classList.add("active") : el.classList.remove("active");
   } catch (e) {
     console.error("logging_status failed:", e);
     document.getElementById("logging").textContent = "logging ?";
@@ -789,7 +881,7 @@ function esc(s) {
 
 loadLevels();
 loadCLevels();
-fetchLogs(); // kicks off the loop
+fetchLogs();
 
 document.getElementById("prevMatch").disabled = true;
 document.getElementById("nextMatch").disabled = true;

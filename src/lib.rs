@@ -1,4 +1,5 @@
 use clap::Parser;
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, io::Write, path::PathBuf, sync::Mutex, time::Instant};
 
@@ -91,11 +92,11 @@ impl AppState {
 
     fn create_log_file() -> std::fs::File {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-        let dir = PathBuf::from(home).join("streamwatch");
+        let dir = PathBuf::from(home).join("log-view");
         std::fs::create_dir_all(&dir).expect("failed to create log dir");
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
         let path = dir.join(format!("logs-{}.log", timestamp));
-        println!("  Log file: {}", path.display());
+        info!("Log file: {}", path.display());
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -108,7 +109,7 @@ impl AppState {
         self.touch();
 
         if !was_connected {
-            println!("  [LOGGER] connected");
+            info!("[LOGGER] connected");
         }
 
         let max = self.options.lock().expect("options poisoned").max_logs;

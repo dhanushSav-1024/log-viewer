@@ -1,6 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use chrono::Local;
+use log::warn;
 use log_view::{
     AppState, IncomingLog, LogEntry, LogsResponse, StatusResponse, StatusResponseLoging,
 };
@@ -164,7 +165,7 @@ async fn main() {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
             let now_connected = state_watch.is_sender_connected();
             if was_connected && !now_connected {
-                println!("  [SENDER] disconnected");
+                warn!("[SENDER] disconnected");
             }
             was_connected = now_connected;
         }
@@ -182,7 +183,7 @@ async fn main() {
     let router = build_router(state);
 
     println!("{}", "=".repeat(60));
-    println!("  STREAMWATCH — Log Viewer Server");
+    println!("  log-view — Log Viewer Server");
     println!("{}", "=".repeat(60));
     println!("  Listening on   http://{}", addr);
     println!("  Static assets  embedded in binary");
