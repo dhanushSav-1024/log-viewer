@@ -17,13 +17,16 @@ curl -fsSL https://raw.githubusercontent.com/dhanushSav-1024/log-viewer/main/ins
 log-view
 ```
 
-**Send logs from Python**
-```python
-import logging
-from log-view import HttpLogHandler
+**Send logs via udp**
+```bash
+echo '{"level":"critical","time":"33", "message":"{\"sensor\":\"GLL\",\"status\":\"FAIL\"}"}' | socat - UDP-DATAGRAM:127.0.0.1:9000
+```
 
-logging.getLogger().addHandler(HttpLogHandler("http://localhost:8080/api/log"))
-logging.info("hello from my app")
+**Send logs via tcp**
+```bash
+curl -X POST http://127.0.0.1:8080/api/log \
+  -H "Content-Type: application/json" \
+  -d '{"message":"test log entry"}
 ```
 
 Open **http://localhost:8080** in your browser — that's it.
