@@ -29,17 +29,18 @@ curl -X POST http://127.0.0.1:8080/api/log \
   -d '{"message":"test log entry"}
 ```
 
-Open **http://localhost:8080** in your browser — that's it.
+Open **http://0.0.0.0:8080** in your browser — that's it.
 
 ## Options
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-i` | `0.0.0.0` | Bind address |
-| `-p` | `8080` | Port |
-| `-m` | `1000` | Max logs in buffer |
-| `-u` | `9000` | udp log listener port |
-| `-l` | off | Save logs to file |
+| Flag | Default   | Description                                                                                                 |
+| ---- | --------- | ----------------------------------------------------------------------------------------------------------- |
+| `-i` | `0.0.0.0` | Bind address. It is recommended to use `127.0.0.1` if the server should only be accessible locally.         |
+| `-p` | `8080`    | HTTP server port.                                                                                           |
+| `-m` | `1000`    | Maximum number of logs stored in the in-memory backend. Older logs are discarded when the limit is reached. |
+| `-u` | `None`    | UDP port for receiving logs. If not set, UDP logging is disabled.                                           |
+| `-l` | `off`     | Enable file logging. Logs are saved to `/home/user/app-name/logs-<timestamp>.log`.                          |
+
 
 ## Features
 
