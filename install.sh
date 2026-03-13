@@ -1,16 +1,17 @@
 #!/bin/bash
+set -e
 
 URL="https://github.com/dhanushSav-1024/log-viewer/releases/download/v0.6/log-view-x64"
-FILE="log-view"
+BINARY="log-view"
+INSTALL_DIR="/usr/local/bin"
 
 echo "Downloading..."
-curl -L "$URL" -o "$FILE"
+curl -fsSL "$URL" -o "/tmp/$BINARY"
 
-echo "Making executable..."
-chmod +x "$FILE"
+echo "Installing..."
+sudo install -m 755 -o root -g root "/tmp/$BINARY" "$INSTALL_DIR/$BINARY"
 
-echo "Installing to /usr/local/bin..."
-sudo mv "$FILE" /usr/local/bin/log-view
+rm -f "/tmp/$BINARY"
 
-echo "Installed successfully!"
+echo "Installed to $INSTALL_DIR/$BINARY"
 echo "Run with: log-view"
