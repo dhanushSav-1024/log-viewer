@@ -1,240 +1,68 @@
-let selectedLevels = new Set();
-
 const BUILTINS = new Set(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]);
+const MAX_DOM = 2000;
+const TRIM_TO = 1500;
+
+let selectedLevels = new Set();
 let paused = false;
 let allLogs = [];
-let renderedCount = 0;
 let customLevels = [];
 let modalJson = null;
 let reconnectTimer = null;
+let es = null;
 
-// ─── FUZZY SEARCH STATE ───
+let pendingLogs = [];
+let atBottom = true;
+let domRowCount = 0;
+
+let statWarn = 0,
+  statErr = 0,
+  statCrit = 0;
+
+let openParsePanels = new Set();
+
 let searchQuery = "";
-let matchElements = [];
-let activeMatchIdx = -1;
-let searchTimer = null;
 
-function fuzzyMatch(text, query) {
-  if (!query) return null;
-  const tL = text.toLowerCase();
-  const qL = query.toLowerCase();
-
-  const exactIdx = tL.indexOf(qL);
-  if (exactIdx !== -1) {
-    const indices = [];
-    for (let i = 0; i < qL.length; i++) indices.push(exactIdx + i);
-    return { indices, score: 1000 };
-  }
-
-  let ti = 0,
-    qi = 0;
-  const indices = [];
-  while (ti < text.length && qi < qL.length) {
-    if (tL[ti] === qL[qi]) {
-      indices.push(ti);
-      qi++;
-    }
-    ti++;
-  }
-  if (qi < qL.length) return null;
-
-  let score = 0,
-    consecutive = 0;
-  for (let i = 0; i < indices.length; i++) {
-    const idx = indices[i];
-    const isWordStart =
-      idx === 0 || /[\s\-_\.\/\\:,\[\]{}()]/.test(text[idx - 1]);
-    if (i > 0 && indices[i] === indices[i - 1] + 1) {
-      consecutive++;
-      score += 5 + consecutive * 3;
-    } else consecutive = 0;
-    if (isWordStart) score += 8;
-    score += 1;
-  }
-  score -= (indices[indices.length - 1] - indices[0] - indices.length) * 0.1;
-  return { indices, score };
+function normQ(q) {
+  return q.toLowerCase().replace(/\s+/g, " ").trim();
 }
-
-function buildHighlightHtml(text, indices) {
-  if (!indices || !indices.length) return esc(text);
-  const idxSet = new Set(indices);
+function matchesSearch(msg, q) {
+  return !q || msg.toLowerCase().includes(q);
+}
+function highlightMsg(msg, q) {
+  if (!q) return esc(msg);
+  const lo = msg.toLowerCase();
   let html = "",
-    i = 0;
-  while (i < text.length) {
-    if (idxSet.has(i)) {
-      let runEnd = i;
-      while (runEnd + 1 < text.length && idxSet.has(runEnd + 1)) runEnd++;
-      html += `<mark class="hl">${esc(text.slice(i, runEnd + 1))}</mark>`;
-      i = runEnd + 1;
-    } else {
-      let runEnd = i;
-      while (runEnd + 1 < text.length && !idxSet.has(runEnd + 1)) runEnd++;
-      html += esc(text.slice(i, runEnd + 1));
-      i = runEnd + 1;
-    }
+    cur = 0,
+    pos;
+  while ((pos = lo.indexOf(q, cur)) !== -1) {
+    html += esc(msg.slice(cur, pos));
+    html += `<mark class="hl">${esc(msg.slice(pos, pos + q.length))}</mark>`;
+    cur = pos + q.length;
   }
-  return html;
+  return html + esc(msg.slice(cur));
 }
 
 function onSearchInput() {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(applySearch, 80);
-  const q = document.getElementById("searchInp").value;
+  const raw = document.getElementById("searchInp").value;
+  searchQuery = normQ(raw);
   document
     .getElementById("searchClear")
-    .classList.toggle("visible", q.length > 0);
-  document.getElementById("searchKbd").classList.toggle("hidden", q.length > 0);
-}
+    .classList.toggle("visible", raw.length > 0);
+  document
+    .getElementById("searchKbd")
+    .classList.toggle("hidden", raw.length > 0);
 
+  flushAndRebuild();
+}
 function onSearchKey(e) {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    navigateMatch(e.shiftKey ? -1 : 1);
-  } else if (e.key === "Escape") {
-    clearSearch();
-  }
+  if (e.key === "Escape") clearSearch();
 }
-
 function clearSearch() {
   document.getElementById("searchInp").value = "";
   document.getElementById("searchClear").classList.remove("visible");
   document.getElementById("searchKbd").classList.remove("hidden");
   searchQuery = "";
-  activeMatchIdx = -1;
-  matchElements = [];
-  applySearch();
-}
-
-// ─── RESTORE ORIGINAL DOM ORDER ───
-function restoreOrder(scroll) {
-  const entries = Array.from(scroll.querySelectorAll(".le"));
-  entries.sort((a, b) => {
-    const ai = parseInt(a.id.replace("le", ""), 10) || 0;
-    const bi = parseInt(b.id.replace("le", ""), 10) || 0;
-    return ai - bi;
-  });
-  const frag = document.createDocumentFragment();
-  entries.forEach((el) => frag.appendChild(el));
-  scroll.appendChild(frag);
-}
-
-function applySearch() {
-  searchQuery = document.getElementById("searchInp").value.trim();
-  matchElements = [];
-  activeMatchIdx = -1;
-
-  const scroll = document.getElementById("logScroll");
-  const entries = Array.from(scroll.querySelectorAll(".le"));
-
-  if (!searchQuery) {
-    restoreOrder(scroll);
-    scroll.querySelectorAll(".le").forEach((el) => {
-      const msgEl = el.querySelector(".le-msg");
-      if (msgEl && msgEl.dataset.originalText !== undefined) {
-        msgEl.innerHTML = esc(msgEl.dataset.originalText);
-      }
-      el.classList.remove("search-match", "search-no-match");
-    });
-    updateSearchCounter(0);
-    document.getElementById("sMatches").textContent = "—";
-    return;
-  }
-
-  const scored = entries.map((el) => {
-    const msgEl = el.querySelector(".le-msg");
-    const originalText = msgEl?.dataset.originalText;
-    const levelHidden = el.style.display === "none";
-    if (!msgEl || originalText === undefined || levelHidden) {
-      return { el, msgEl, originalText, result: null, levelHidden };
-    }
-    const result = fuzzyMatch(originalText, searchQuery);
-    return { el, msgEl, originalText, result, levelHidden: false };
-  });
-
-  let maxScore = 0;
-  scored.forEach((s) => {
-    if (s.result && s.result.score > maxScore) maxScore = s.result.score;
-  });
-  const threshold = maxScore * 0.7;
-
-  const matched = scored.filter((s) => s.result && s.result.score >= threshold);
-  const rest = scored.filter((s) => !s.result || s.result.score < threshold);
-
-  matched.sort((a, b) => b.result.score - a.result.score);
-
-  const frag = document.createDocumentFragment();
-  matched.forEach(({ el }) => frag.appendChild(el));
-  rest.forEach(({ el }) => frag.appendChild(el));
-  scroll.appendChild(frag);
-
-  let totalMatches = 0;
-  matched.forEach(({ el, msgEl, originalText, result }) => {
-    el.classList.add("search-match");
-    el.classList.remove("search-no-match");
-    el.style.display = "";
-    msgEl.innerHTML = buildHighlightHtml(originalText, result.indices);
-    const marks = msgEl.querySelectorAll("mark.hl");
-    marks.forEach((m) => {
-      m.dataset.matchIdx = totalMatches++;
-      matchElements.push(m);
-    });
-  });
-
-  rest.forEach(({ el, msgEl, originalText, levelHidden }) => {
-    if (levelHidden) return;
-    el.classList.remove("search-match");
-    el.classList.add("search-no-match");
-    if (msgEl && originalText !== undefined)
-      msgEl.innerHTML = esc(originalText);
-  });
-
-  updateSearchCounter(totalMatches);
-  document.getElementById("sMatches").textContent = totalMatches;
-  if (totalMatches > 0) {
-    activeMatchIdx = 0;
-    setActiveMatch(0);
-  }
-}
-
-function navigateMatch(dir) {
-  if (!matchElements.length) return;
-  activeMatchIdx =
-    (activeMatchIdx + dir + matchElements.length) % matchElements.length;
-  setActiveMatch(activeMatchIdx);
-}
-
-function setActiveMatch(idx) {
-  matchElements.forEach((m) => m.classList.remove("hl-active"));
-  if (idx < 0 || idx >= matchElements.length) return;
-  const el = matchElements[idx];
-  el.classList.add("hl-active");
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
-  updateSearchCounter(matchElements.length);
-}
-
-function updateSearchCounter(total) {
-  const counter = document.getElementById("searchCounter");
-  const prevBtn = document.getElementById("prevMatch");
-  const nextBtn = document.getElementById("nextMatch");
-  if (!searchQuery) {
-    counter.textContent = "";
-    counter.className = "search-counter";
-    prevBtn.disabled = true;
-    nextBtn.disabled = true;
-    return;
-  }
-  if (total === 0) {
-    counter.textContent = "no match";
-    counter.className = "search-counter no-results";
-    prevBtn.disabled = true;
-    nextBtn.disabled = true;
-  } else {
-    const cur = activeMatchIdx >= 0 ? activeMatchIdx + 1 : 1;
-    counter.textContent = `${cur} / ${total}`;
-    counter.className = "search-counter has-results";
-    prevBtn.disabled = false;
-    nextBtn.disabled = false;
-  }
+  flushAndRebuild();
 }
 
 document.addEventListener("keydown", (e) => {
@@ -253,7 +81,6 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// ─── COOKIES ───
 const ck = {
   set(k, v) {
     const d = new Date();
@@ -270,51 +97,42 @@ const ck = {
   },
 };
 
-// ─── UNIFIED LEVEL FILTER ───
-
 function toggleChip(btn) {
   const lvl = btn.dataset.lvl;
-  if (selectedLevels.has(lvl)) selectedLevels.delete(lvl);
-  else selectedLevels.add(lvl);
+  selectedLevels.has(lvl)
+    ? selectedLevels.delete(lvl)
+    : selectedLevels.add(lvl);
   btn.classList.toggle("on", selectedLevels.has(lvl));
   syncToolbarState();
   updateFilterLabel();
   saveSelectedLevels();
-  refilter();
+  flushAndRebuild();
 }
-
 function filterByCLevel(t) {
-  if (selectedLevels.has(t)) selectedLevels.delete(t);
-  else selectedLevels.add(t);
+  selectedLevels.has(t) ? selectedLevels.delete(t) : selectedLevels.add(t);
   syncToolbarState();
   updateFilterLabel();
   renderCLevels();
-  refilter();
+  flushAndRebuild();
 }
-
-// Clear all level filters (bound to the ✕ button in HTML)
 function clearCLFilter() {
   selectedLevels.clear();
   document
     .querySelectorAll(".chip[data-lvl]")
-    .forEach((btn) => btn.classList.remove("on"));
+    .forEach((b) => b.classList.remove("on"));
   syncToolbarState();
   updateFilterLabel();
   renderCLevels();
-  refilter();
+  flushAndRebuild();
 }
-
-// Adds/removes .has-filter on toolbar so CSS can dim unselected chips
 function syncToolbarState() {
   document
     .querySelector(".toolbar")
     .classList.toggle("has-filter", selectedLevels.size > 0);
 }
-
-// Show "ALL" or a concise list of what's selected
 function updateFilterLabel() {
   const el = document.getElementById("activeCLLabel");
-  if (selectedLevels.size === 0) {
+  if (!selectedLevels.size) {
     el.textContent = "ALL";
     return;
   }
@@ -327,34 +145,27 @@ function updateFilterLabel() {
       ? ordered.join(" · ")
       : ordered.slice(0, 3).join(" · ") + ` +${ordered.length - 3}`;
 }
-
-// Legacy alias used nowhere internally but kept for safety
 function updateCLLabel() {
   updateFilterLabel();
 }
-
 function saveSelectedLevels() {
   ck.set("sw_sel_levels", [...selectedLevels]);
 }
-
 function loadLevels() {
-  // Strip the HTML-default "on" classes — state is driven from here only
   document
     .querySelectorAll(".chip[data-lvl]")
-    .forEach((btn) => btn.classList.remove("on"));
-
+    .forEach((b) => b.classList.remove("on"));
   const saved = ck.get("sw_sel_levels");
   if (saved && Array.isArray(saved))
     saved.forEach((l) => selectedLevels.add(l));
-
-  document.querySelectorAll(".chip[data-lvl]").forEach((btn) => {
-    btn.classList.toggle("on", selectedLevels.has(btn.dataset.lvl));
-  });
+  document
+    .querySelectorAll(".chip[data-lvl]")
+    .forEach((b) =>
+      b.classList.toggle("on", selectedLevels.has(b.dataset.lvl)),
+    );
   syncToolbarState();
   updateFilterLabel();
 }
-
-// ─── CUSTOM LEVELS ───
 
 function loadCLevels() {
   customLevels = ck.get("sw_clevels") || [];
@@ -363,7 +174,6 @@ function loadCLevels() {
 function saveCLevels() {
   ck.set("sw_clevels", customLevels);
 }
-
 function addCLevel() {
   const inp = document.getElementById("clevelInp");
   const val = inp.value.trim().toUpperCase();
@@ -373,7 +183,6 @@ function addCLevel() {
   renderCLevels();
   inp.value = "";
 }
-
 function removeCLevel(t) {
   customLevels = customLevels.filter((x) => x !== t);
   if (selectedLevels.has(t)) {
@@ -384,9 +193,8 @@ function removeCLevel(t) {
   }
   saveCLevels();
   renderCLevels();
-  refilter();
+  flushAndRebuild();
 }
-
 function renderCLevels() {
   document.getElementById("clevelList").innerHTML = customLevels
     .map(
@@ -397,8 +205,6 @@ function renderCLevels() {
     )
     .join("");
 }
-
-// ─── PAUSE / RESUME ───
 
 function togglePause() {
   paused = !paused;
@@ -415,11 +221,9 @@ function togglePause() {
     btn.classList.remove("active");
     dot.classList.remove("paused");
     document.getElementById("statusTxt").textContent = "LIVE";
-    fetchLogs();
+    connectSSE();
   }
 }
-
-// ─── PYTHON → JSON COERCION ───
 
 function pyToJson(s) {
   try {
@@ -466,7 +270,6 @@ function pyToJson(s) {
     return null;
   }
 }
-
 function extractOneJSON(msg, fromIdx = 0) {
   const sub = msg.slice(fromIdx);
   const rel = sub.search(/[{\[]/);
@@ -516,7 +319,6 @@ function extractOneJSON(msg, fromIdx = 0) {
   if (!parsed || typeof parsed !== "object") return null;
   return { parsed, start, end };
 }
-
 function extractAllJSON(msg) {
   const blocks = [];
   let cursor = 0;
@@ -528,9 +330,6 @@ function extractAllJSON(msg) {
   }
   return blocks;
 }
-
-// ─── JSON TREE ───
-
 function jLeaf(data) {
   if (data === null) return `<span class="jnull">null</span>`;
   if (typeof data === "boolean") return `<span class="jbool">${data}</span>`;
@@ -559,15 +358,11 @@ function jTree(data, prefix, depth = 0) {
         ? ""
         : `<span class="jkey">"${esc(String(k))}"</span><span class="jpunc">: </span>`;
       const childLeaf = jLeaf(v);
-      if (childLeaf !== null) {
+      if (childLeaf !== null)
         return `<div class="jnode"><div class="jrow"><span class="jtoggle spacer"></span>${keyHtml}${childLeaf}${comma}</div></div>`;
-      }
       const cid =
         prefix + "c" + i + "d" + depth + "_" + ((Math.random() * 1e9) | 0);
-      return `<div class="jnode">
-      <div class="jrow"><span class="jtoggle" onclick="jtog('${cid}',this)">▸</span>${keyHtml}${jPreview(v)}${comma}</div>
-      <div class="jchildren" id="${cid}">${jTree(v, prefix + "_" + i, depth + 1)}</div>
-    </div>`;
+      return `<div class="jnode"><div class="jrow"><span class="jtoggle" onclick="jtog('${cid}',this)">▸</span>${keyHtml}${jPreview(v)}${comma}</div><div class="jchildren" id="${cid}">${jTree(v, prefix + "_" + i, depth + 1)}</div></div>`;
     })
     .join("");
   const oB = isArr ? "[" : "{",
@@ -575,10 +370,7 @@ function jTree(data, prefix, depth = 0) {
   const preview = isArr
     ? `${data.length} items`
     : `${Object.keys(data).length} keys`;
-  return `<div class="jrow"><span class="jtoggle" onclick="jtog('${id}',this)">▸</span>
-    <span class="jpunc">${oB}</span><span class="jpreview">${preview}</span><span class="jpunc">${cB}</span>
-  </div>
-  <div class="jchildren" id="${id}">${rows}</div>`;
+  return `<div class="jrow"><span class="jtoggle" onclick="jtog('${id}',this)">▸</span><span class="jpunc">${oB}</span><span class="jpreview">${preview}</span><span class="jpunc">${cB}</span></div><div class="jchildren" id="${id}">${rows}</div>`;
 }
 function jtog(id, el) {
   const c = document.getElementById(id);
@@ -601,9 +393,6 @@ function collapseAll() {
     .querySelectorAll("#modalBody .jtoggle:not(.spacer)")
     .forEach((el) => (el.textContent = "▸"));
 }
-
-// ─── MODAL ───
-
 function openModal(logIdx) {
   const log = allLogs[logIdx];
   if (!log) return;
@@ -617,8 +406,7 @@ function openModal(logIdx) {
     .map(
       (b, bi) => `
     ${blocks.length > 1 ? `<div class="modal-block-label">Block ${bi + 1}</div>` : ""}
-    <div class="modal-json-block">${jTree(b.parsed, prefix + bi + "_")}</div>
-  `,
+    <div class="modal-json-block">${jTree(b.parsed, prefix + bi + "_")}</div>`,
     )
     .join("");
   document.getElementById("modalOverlay").classList.add("open");
@@ -649,52 +437,53 @@ function copyModalJson() {
   });
 }
 
-// ─── INLINE PARSE PANEL ───
-
-function toggleParsePanel(idx) {
-  const panel = document.getElementById("pp" + idx);
-  if (!panel) return;
-  if (panel.dataset.built !== "1") {
-    const log = allLogs[idx];
-    if (!log) return;
-    const blocks = extractAllJSON(log.message);
-    if (!blocks.length) {
-      panel.innerHTML = `<span style="color:var(--text-muted);font-size:0.65rem;">No JSON found in this message.</span>`;
-    } else {
-      const prefix = "e" + idx + "_";
-      panel.innerHTML = blocks
-        .map(
-          (b, bi) => `
-        ${blocks.length > 1 ? `<div style="font-size:0.6rem;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em;">Block ${bi + 1}</div>` : ""}
-        <div class="inline-json-block">${jTree(b.parsed, prefix + bi + "_")}</div>
-      `,
-        )
-        .join("");
-    }
-    panel.dataset.built = "1";
+function buildParsePanelContent(logIdx, panelEl) {
+  const log = allLogs[logIdx];
+  if (!log) return;
+  const blocks = extractAllJSON(log.message);
+  if (!blocks.length) {
+    panelEl.innerHTML = `<span class="pp-empty">No JSON found in this message.</span>`;
+  } else {
+    const prefix = "e" + logIdx + "_";
+    panelEl.innerHTML = blocks
+      .map(
+        (b, bi) => `
+      ${blocks.length > 1 ? `<div class="pp-block-label">Block ${bi + 1}</div>` : ""}
+      <div class="inline-json-block">${jTree(b.parsed, prefix + bi + "_")}</div>`,
+      )
+      .join("");
   }
-  const btn = document.getElementById("parsebtn" + idx);
-  const visible = panel.style.display !== "none" && panel.style.display !== "";
-  panel.style.display = visible ? "none" : "block";
-  if (btn) btn.classList.toggle("active", !visible);
 }
-
-// ─── ENTRY RENDERING ───
+function toggleParsePanel(idx) {
+  openParsePanels.has(idx)
+    ? openParsePanels.delete(idx)
+    : openParsePanels.add(idx);
+  const panel = document.getElementById("pp" + idx);
+  const btn = document.getElementById("parsebtn" + idx);
+  const isOpen = openParsePanels.has(idx);
+  if (panel) {
+    panel.style.display = isOpen ? "block" : "none";
+    if (isOpen) buildParsePanelContent(idx, panel);
+  }
+  if (btn) btn.classList.toggle("active", isOpen);
+}
 
 function makeEntry(log, idx) {
   const lvlU = log.level.toUpperCase();
   const isBuiltin = BUILTINS.has(lvlU);
-  const lvlCls = isBuiltin
-    ? "le-" +
-      { DEBUG: "d", INFO: "i", WARNING: "w", ERROR: "e", CRITICAL: "c" }[lvlU]
-    : "le-x";
-  const bdgCls = isBuiltin
-    ? "bd-" +
-      { DEBUG: "d", INFO: "i", WARNING: "w", ERROR: "e", CRITICAL: "c" }[lvlU]
-    : "bd-x";
+  const map = {
+    DEBUG: "d",
+    INFO: "i",
+    WARNING: "w",
+    ERROR: "e",
+    CRITICAL: "c",
+  };
+  const lvlCls = isBuiltin ? "le-" + map[lvlU] : "le-x";
+  const bdgCls = isBuiltin ? "bd-" + map[lvlU] : "bd-x";
   const src = log.logger
     ? `<div class="le-src">Logger: <b>${log.logger}</b>&nbsp;·&nbsp;<b>${log.filename || ""}${log.lineno ? ":" + log.lineno : ""}</b></div>`
     : "";
+  const isOpen = openParsePanels.has(idx);
   const el = document.createElement("div");
   el.className = `le ${lvlCls}`;
   el.dataset.level = lvlU;
@@ -707,111 +496,270 @@ function makeEntry(log, idx) {
     <span class="le-time">${log.time}</span>
     <span class="le-badge ${bdgCls}">${lvlU}</span>
     <div class="le-body">
-      <div class="le-msg" data-original-text="${esc(log.message)}">${esc(log.message)}</div>
+      <div class="le-msg" data-original-text="${esc(log.message)}">${highlightMsg(log.message, searchQuery)}</div>
       ${src}
-      <button class="parse-btn" id="parsebtn${idx}" onclick="toggleParsePanel(${idx})">▸ PARSE</button>
-      <div class="parse-panel" id="pp${idx}" style="display:none"></div>
+      <button class="parse-btn${isOpen ? " active" : ""}" id="parsebtn${idx}" onclick="toggleParsePanel(${idx})">▸ PARSE</button>
+      <div class="parse-panel" id="pp${idx}" style="display:${isOpen ? "block" : "none"}"></div>
     </div>`;
+  if (isOpen) buildParsePanelContent(idx, el.querySelector(".parse-panel"));
   return el;
 }
 
-function applyLogs(newLogs) {
+function trimDOMIfNeeded() {
+  if (domRowCount <= MAX_DOM) return;
   const scroll = document.getElementById("logScroll");
-  if (newLogs.length < renderedCount || renderedCount === 0) {
-    scroll.innerHTML = "";
-    renderedCount = 0;
-    if (!newLogs.length) {
-      scroll.innerHTML =
-        '<div class="empty"><span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS</div>';
-      return;
+  const rows = scroll.querySelectorAll(".le");
+  const removeCount = domRowCount - TRIM_TO;
+  const savedTop = scroll.scrollTop;
+  let removedH = 0;
+  for (let i = 0; i < removeCount && i < rows.length; i++) {
+    removedH += rows[i].offsetHeight;
+    rows[i].remove();
+  }
+  domRowCount -= removeCount;
+
+  scroll.scrollTop = Math.max(0, savedTop - removedH);
+}
+
+function appendEntries(logs, indexOffset) {
+  const scroll = document.getElementById("logScroll");
+
+  const empty = scroll.querySelector(".empty");
+  if (empty) empty.remove();
+
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < logs.length; i++) {
+    if (!passesFilter(logs[i])) continue;
+    frag.appendChild(makeEntry(logs[i], indexOffset + i));
+    domRowCount++;
+  }
+  scroll.appendChild(frag);
+  trimDOMIfNeeded();
+}
+
+function passesFilter(log) {
+  const lvl = log.level.toUpperCase();
+  if (selectedLevels.size > 0 && !selectedLevels.has(lvl)) return false;
+  if (!matchesSearch(log.message, searchQuery)) return false;
+  return true;
+}
+
+let sentinel = null;
+let bottomObs = null;
+
+function setupSentinel() {
+  const scroll = document.getElementById("logScroll");
+
+  sentinel = document.createElement("div");
+  sentinel.id = "scrollSentinel";
+  sentinel.className = "scroll-sentinel";
+  scroll.appendChild(sentinel);
+
+  bottomObs = new IntersectionObserver(
+    (entries) => {
+      const wasAtBottom = atBottom;
+      atBottom = entries[0].isIntersecting;
+
+      if (atBottom && !wasAtBottom) {
+        flushPending();
+      }
+    },
+    { root: scroll, threshold: 0 },
+  );
+
+  bottomObs.observe(sentinel);
+}
+
+function flushPending() {
+  if (!pendingLogs.length) {
+    updateNewBadge(0);
+    return;
+  }
+
+  const scroll = document.getElementById("logScroll");
+  const indexBase = allLogs.length - pendingLogs.length;
+
+  appendEntries(pendingLogs, indexBase);
+  pendingLogs = [];
+  updateNewBadge(0);
+
+  scroll.appendChild(sentinel);
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function updateNewBadge(n) {
+  let badge = document.getElementById("newLogsBadge");
+  if (!badge) {
+    badge = document.createElement("button");
+    badge.id = "newLogsBadge";
+    badge.className = "new-logs-badge";
+    badge.onclick = scrollBottom;
+    document.body.appendChild(badge);
+  }
+  if (n > 0) {
+    badge.style.display = "block";
+    badge.textContent = `▼ ${n} new`;
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function flushAndRebuild() {
+  pendingLogs = [];
+  updateNewBadge(0);
+
+  const scroll = document.getElementById("logScroll");
+  scroll.innerHTML = "";
+  domRowCount = 0;
+
+  const frag = document.createDocumentFragment();
+  let added = 0;
+  for (let i = 0; i < allLogs.length; i++) {
+    if (!passesFilter(allLogs[i])) continue;
+    frag.appendChild(makeEntry(allLogs[i], i));
+    added++;
+  }
+
+  if (added === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty";
+    empty.innerHTML = `<span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS`;
+    frag.appendChild(empty);
+  }
+
+  scroll.appendChild(frag);
+  domRowCount = added;
+  trimDOMIfNeeded();
+
+  scroll.appendChild(sentinel);
+
+  scroll.scrollTop = scroll.scrollHeight;
+  updateStats();
+}
+
+function ingestLog(entry) {
+  allLogs.push(entry);
+
+  const lvl = entry.level.toUpperCase();
+  if (lvl === "WARNING") statWarn++;
+  if (lvl === "ERROR") statErr++;
+  if (lvl === "CRITICAL") statCrit++;
+
+  if (atBottom) {
+    if (passesFilter(entry)) {
+      appendEntries([entry], allLogs.length - 1);
+      const scroll = document.getElementById("logScroll");
+      scroll.appendChild(sentinel);
+      scroll.scrollTop = scroll.scrollHeight;
+    }
+  } else {
+    if (passesFilter(entry)) {
+      pendingLogs.push(entry);
+      updateNewBadge(pendingLogs.length);
     }
   }
-  const atBottom =
-    scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 80;
-  const frag = document.createDocumentFragment();
-  for (let i = renderedCount; i < newLogs.length; i++)
-    frag.appendChild(makeEntry(newLogs[i], i));
-  renderedCount = newLogs.length;
-  scroll.appendChild(frag);
-  refilter();
-  if (searchQuery) applySearch();
-  if (atBottom) scroll.scrollTop = scroll.scrollHeight;
+
+  updateStats();
 }
 
-// ─── UNIFIED REFILTER ───
-// selectedLevels.size === 0 → show everything
-// otherwise → show only entries whose level is in selectedLevels
+function updateStats() {
+  document.getElementById("sTotal").textContent = allLogs.length;
 
-function refilter() {
-  let vis = 0,
-    warn = 0,
-    err = 0,
-    crit = 0;
-  allLogs.forEach((l) => {
-    const v = l.level.toUpperCase();
-    if (v === "WARNING") warn++;
-    if (v === "ERROR") err++;
-    if (v === "CRITICAL") crit++;
-  });
-  document.querySelectorAll("#logScroll .le").forEach((el) => {
-    const lvl = el.dataset.level;
-    const show = selectedLevels.size === 0 || selectedLevels.has(lvl);
-    el.style.display = show ? "" : "none";
-    if (show) vis++;
-  });
+  const vis =
+    document.querySelectorAll("#logScroll .le").length +
+    pendingLogs.filter(passesFilter).length;
   document.getElementById("sVis").textContent = vis;
-  document.getElementById("sWarn").textContent = warn;
-  document.getElementById("sErr").textContent = err;
-  document.getElementById("sCrit").textContent = crit;
-  if (searchQuery) applySearch();
+  document.getElementById("sWarn").textContent = statWarn;
+  document.getElementById("sErr").textContent = statErr;
+  document.getElementById("sCrit").textContent = statCrit;
+  document.getElementById("sMatches").textContent = searchQuery
+    ? allLogs.filter((l) => matchesSearch(l.message, searchQuery)).length
+    : "—";
 }
 
-// ─── FETCH LOOP ───
-
-function fetchLogs() {
-  if (paused) return;
+function connectSSE() {
+  if (es) {
+    es.close();
+    es = null;
+  }
   fetch("/api/logs")
     .then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     })
     .then((data) => {
-      allLogs = data.logs;
-      applyLogs(data.logs);
-      document.getElementById("sTotal").textContent = data.total;
+      allLogs = [];
+      statWarn = 0;
+      statErr = 0;
+      statCrit = 0;
+      openParsePanels.clear();
+      pendingLogs = [];
+      atBottom = true;
+      data.logs.forEach((l) => {
+        allLogs.push(l);
+        const v = l.level.toUpperCase();
+        if (v === "WARNING") statWarn++;
+        if (v === "ERROR") statErr++;
+        if (v === "CRITICAL") statCrit++;
+      });
       document.getElementById("sTime").textContent =
         new Date().toLocaleTimeString();
       document.getElementById("statusTxt").textContent = "LIVE";
-      reconnectTimer = setTimeout(fetchLogs, 2000);
+      flushAndRebuild();
+      openSSE();
     })
     .catch(() => {
       document.getElementById("statusTxt").textContent = "NO CONNECTION";
-      reconnectTimer = setTimeout(fetchLogs, 500);
+      reconnectTimer = setTimeout(connectSSE, 2000);
     });
 }
 
+function openSSE() {
+  es = new EventSource("/api/stream");
+  es.onmessage = (e) => {
+    if (paused) return;
+    try {
+      const entry = JSON.parse(e.data);
+      ingestLog(entry);
+      document.getElementById("sTime").textContent =
+        new Date().toLocaleTimeString();
+    } catch {}
+  };
+  es.onopen = () => {
+    document.getElementById("statusTxt").textContent = "LIVE";
+    clearTimeout(reconnectTimer);
+  };
+  es.onerror = () => {
+    document.getElementById("statusTxt").textContent = "NO CONNECTION";
+    es.close();
+    es = null;
+    reconnectTimer = setTimeout(connectSSE, 2000);
+  };
+}
+
 function scrollBottom() {
-  const s = document.getElementById("logScroll");
-  s.scrollTop = s.scrollHeight;
+  flushPending();
+  const scroll = document.getElementById("logScroll");
+  scroll.scrollTop = scroll.scrollHeight;
 }
 
 function doClear() {
   if (!confirm("Clear all logs?")) return;
   fetch("/api/clear", { method: "POST" }).then(() => {
     allLogs = [];
-    renderedCount = 0;
+    statWarn = 0;
+    statErr = 0;
+    statCrit = 0;
+    pendingLogs = [];
+    openParsePanels.clear();
+    atBottom = true;
     searchQuery = "";
-    matchElements = [];
-    activeMatchIdx = -1;
     document.getElementById("searchInp").value = "";
     document.getElementById("searchClear").classList.remove("visible");
     document.getElementById("searchKbd").classList.remove("hidden");
-    document.getElementById("searchCounter").textContent = "";
     document.getElementById("sMatches").textContent = "—";
-    document.getElementById("logScroll").innerHTML =
-      '<div class="empty"><span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS</div>';
-    document.getElementById("sTotal").textContent = 0;
-    document.getElementById("sVis").textContent = 0;
+    updateNewBadge(0);
+    flushAndRebuild();
   });
 }
 
@@ -829,6 +777,7 @@ async function changeLogging() {
 }
 
 window.addEventListener("load", async () => {
+  setupSentinel();
   try {
     const res = await fetch("api/logging_status");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -870,6 +819,7 @@ function showToast(msg) {
   clearTimeout(_tt);
   _tt = setTimeout(() => el.classList.remove("show"), 1800);
 }
+
 function esc(s) {
   if (typeof s !== "string") return String(s);
   return s
@@ -881,7 +831,7 @@ function esc(s) {
 
 loadLevels();
 loadCLevels();
-fetchLogs();
+connectSSE();
 
 document.getElementById("prevMatch").disabled = true;
 document.getElementById("nextMatch").disabled = true;

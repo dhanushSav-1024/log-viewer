@@ -2,6 +2,7 @@ use clap::Parser;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, io::Write, path::PathBuf, sync::Mutex, time::Instant};
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -64,6 +65,7 @@ pub struct AppState {
     pub options: Mutex<Cli>,
     pub log_file: Mutex<Option<std::fs::File>>,
     pub last_seen: Mutex<Option<Instant>>,
+    pub tx: broadcast::Sender<LogEntry>,
 }
 
 impl AppState {
@@ -74,11 +76,13 @@ impl AppState {
         } else {
             None
         };
+        let (tx, _) = broadcast::channel(256); // ← add
         Self {
             logs: Mutex::new(VecDeque::with_capacity(options.max_logs)),
             options: Mutex::new(options),
             log_file: Mutex::new(log_file),
             last_seen: Mutex::new(None),
+            tx,
         }
     }
 
@@ -110,22 +114,23 @@ impl AppState {
     pub fn push(&self, entry: LogEntry) {
         let was_connected = self.is_sender_connected();
         self.touch();
-
         if !was_connected {
             info!("[LOGGER] connected");
         }
-
         let max = self.options.lock().expect("options poisoned").max_logs;
         let mut guard = self.logs.lock().expect("logs poisoned");
-        if guard.len() >= max {
+        guard.push_back(entry.clone());
+        while guard.len() > max {
             guard.pop_front();
         }
         if let Ok(mut file_guard) = self.log_file.lock() {
             if let Some(ref mut file) = *file_guard {
-                let _ = writeln!(file, "{}", entry.message);
+                if let Some(last) = guard.back() {
+                    let _ = writeln!(file, "{}", last.message);
+                }
             }
         }
-        guard.push_back(entry);
+        let _ = self.tx.send(entry);
     }
 
     pub fn toggle_logging(&self) -> bool {
@@ -145,7 +150,7 @@ impl AppState {
 
     pub fn snapshot(&self) -> Vec<LogEntry> {
         let guard = self.logs.lock().expect("log mutex poisoned");
-        guard.iter().cloned().collect()
+        guard.iter().rev().cloned().collect()
     }
 
     pub fn clear(&self) {

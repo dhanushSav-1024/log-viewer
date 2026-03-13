@@ -7,6 +7,7 @@ use log_view::{
 };
 use rust_embed::RustEmbed;
 
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{
     Router,
     extract::State,
@@ -14,6 +15,9 @@ use axum::{
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
+use std::convert::Infallible;
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -49,6 +53,21 @@ async fn serve_static(uri: Uri) -> Response {
 }
 
 type SharedState = Arc<AppState>;
+async fn sse_logs(
+    State(state): State<SharedState>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {
+    let rx = state.tx.subscribe();
+    let stream = BroadcastStream::new(rx).filter_map(|msg| {
+        match msg {
+            Ok(entry) => {
+                let json = serde_json::to_string(&entry).unwrap_or_default();
+                Some(Ok(Event::default().data(json)))
+            }
+            Err(_) => None, // lagged, skip
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default())
+}
 async fn handle_get_logs(State(state): State<SharedState>) -> impl IntoResponse {
     let logs = state.snapshot();
     let total = logs.len();
@@ -135,6 +154,7 @@ fn build_router(state: SharedState, tcp_mode: bool) -> Router {
 
     let mut api = Router::new()
         .route("/logs", get(handle_get_logs))
+        .route("/stream", get(sse_logs))
         .route("/clear", post(handle_clear))
         .route("/change_logging", post(change_logging))
         .route("/logging_status", get(logging_status))
