@@ -6,7 +6,7 @@ BINARY="log-view"
 INSTALL_DIR="/usr/local/bin"
 
 echo "Downloading..."
-curl -fsSL "$URL" -o "/tmp/$BINARY"
+curl -fL --progress-bar "$URL" -o "/tmp/$BINARY"
 
 echo "Installing..."
 sudo install -m 755 -o root -g root "/tmp/$BINARY" "$INSTALL_DIR/$BINARY"
