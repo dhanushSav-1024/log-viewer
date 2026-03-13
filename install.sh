@@ -1,6 +1,6 @@
 #!/bin/bash
 
-URL="https://github.com/dhanushSav-1024/log-viewer/releases/download/v0.5/log-view-x64"
+URL="https://github.com/dhanushSav-1024/log-viewer/releases/download/v0.6/log-view-x64"
 FILE="log-view"
 
 echo "Downloading..."
