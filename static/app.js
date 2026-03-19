@@ -22,6 +22,14 @@ let openParsePanels = new Set();
 
 let searchQuery = "";
 
+let totalReceived = 0;
+
+let maxLogs = 1000;
+
+function trimToMax(arr) {
+  if (arr.length > maxLogs) arr.splice(0, arr.length - maxLogs);
+}
+
 function normQ(q) {
   return q.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -237,6 +245,27 @@ function pyToJson(s) {
       i = 0;
     while (i < j.length) {
       const ch = j[i];
+
+      // NEW: pass through already-valid double-quoted strings untouched
+      if (ch === '"') {
+        out += ch;
+        i++;
+        while (i < j.length) {
+          const c = j[i];
+          out += c;
+          i++;
+          if (c === "\\") {
+            if (i < j.length) {
+              out += j[i];
+              i++;
+            }
+            continue;
+          }
+          if (c === '"') break; // end of double-quoted string
+        }
+        continue;
+      }
+
       if (ch === "'") {
         let str = '"';
         i++;
@@ -270,6 +299,7 @@ function pyToJson(s) {
     return null;
   }
 }
+
 function extractOneJSON(msg, fromIdx = 0) {
   const sub = msg.slice(fromIdx);
   const rel = sub.search(/[{\[]/);
@@ -305,7 +335,8 @@ function extractOneJSON(msg, fromIdx = 0) {
       }
     }
   }
-  if (end === -1) return null;
+  if (end === -1) return null; // unbalanced — truly nothing usable
+
   const raw = msg.slice(start, end);
   let parsed = null;
   try {
@@ -316,17 +347,20 @@ function extractOneJSON(msg, fromIdx = 0) {
       parsed = JSON.parse(pyToJson(raw));
     } catch {}
   }
-  if (!parsed || typeof parsed !== "object") return null;
+  // Always return start+end so caller can skip past the whole block
   return { parsed, start, end };
 }
+
 function extractAllJSON(msg) {
   const blocks = [];
   let cursor = 0;
   while (cursor < msg.length) {
     const b = extractOneJSON(msg, cursor);
-    if (!b) break;
-    blocks.push(b);
-    cursor = b.end;
+    if (!b) break; // no { or [ found at all
+    if (b.parsed !== null && typeof b.parsed === "object") {
+      blocks.push(b); // only keep successful parses
+    }
+    cursor = b.end; // ALWAYS skip past the whole block
   }
   return blocks;
 }
@@ -638,7 +672,9 @@ function flushAndRebuild() {
 }
 
 function ingestLog(entry) {
+  totalReceived++;
   allLogs.push(entry);
+  trimToMax(allLogs);
 
   const lvl = entry.level.toUpperCase();
   if (lvl === "WARNING") statWarn++;
@@ -655,6 +691,7 @@ function ingestLog(entry) {
   } else {
     if (passesFilter(entry)) {
       pendingLogs.push(entry);
+      trimToMax(pendingLogs);
       updateNewBadge(pendingLogs.length);
     }
   }
@@ -663,12 +700,11 @@ function ingestLog(entry) {
 }
 
 function updateStats() {
-  document.getElementById("sTotal").textContent = allLogs.length;
+  document.getElementById("sTotal").textContent = totalReceived;
 
-  const vis =
-    document.querySelectorAll("#logScroll .le").length +
-    pendingLogs.filter(passesFilter).length;
+  const vis = allLogs.filter(passesFilter).length;
   document.getElementById("sVis").textContent = vis;
+
   document.getElementById("sWarn").textContent = statWarn;
   document.getElementById("sErr").textContent = statErr;
   document.getElementById("sCrit").textContent = statCrit;
@@ -677,11 +713,20 @@ function updateStats() {
     : "—";
 }
 
-function connectSSE() {
+async function connectSSE() {
   if (es) {
     es.close();
     es = null;
   }
+
+  try {
+    const r = await fetch("/api/senders-count");
+    if (r.ok) {
+      const d = await r.json();
+      if (typeof d.len === "number" && d.len > 0) maxLogs = d.len;
+    }
+  } catch {}
+
   fetch("/api/logs")
     .then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -689,12 +734,14 @@ function connectSSE() {
     })
     .then((data) => {
       allLogs = [];
+      totalReceived = 0;
       statWarn = 0;
       statErr = 0;
       statCrit = 0;
       openParsePanels.clear();
       pendingLogs = [];
       atBottom = true;
+
       data.logs.forEach((l) => {
         allLogs.push(l);
         const v = l.level.toUpperCase();
@@ -702,6 +749,9 @@ function connectSSE() {
         if (v === "ERROR") statErr++;
         if (v === "CRITICAL") statCrit++;
       });
+
+      trimToMax(allLogs);
+      totalReceived = totalReceived + allLogs.length;
       document.getElementById("sTime").textContent =
         new Date().toLocaleTimeString();
       document.getElementById("statusTxt").textContent = "LIVE";
@@ -750,6 +800,7 @@ function doClear() {
     statWarn = 0;
     statErr = 0;
     statCrit = 0;
+    totalReceived = 0;
     pendingLogs = [];
     openParsePanels.clear();
     atBottom = true;

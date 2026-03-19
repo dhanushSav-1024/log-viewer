@@ -107,6 +107,11 @@ async fn sender_status(State(state): State<SharedState>) -> impl IntoResponse {
     }))
 }
 
+async fn sender_count(State(state): State<SharedState>) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "len": state.sentence_count()
+    }))
+}
 async fn change_logging(State(state): State<SharedState>) -> impl IntoResponse {
     let new_logging = state.toggle_logging();
     (
@@ -159,6 +164,7 @@ fn build_router(state: SharedState, tcp_mode: bool) -> Router {
         .route("/change_logging", post(change_logging))
         .route("/logging_status", get(logging_status))
         .route("/sender_status", get(sender_status))
+        .route("/senders-count", get(sender_count))
         .fallback(handle_not_found);
 
     if tcp_mode {

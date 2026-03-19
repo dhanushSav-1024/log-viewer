@@ -51,6 +51,8 @@ pub struct Cli {
     pub port: u16,
     #[arg(short = 'm', long = "max-logs", default_value_t = 1000)]
     pub max_logs: usize,
+    #[arg(short = 's', long = "max-ui-logs", default_value_t = 1000)]
+    pub max_ui_logs: usize,
     /// store loges in /home/user/logeg
     #[arg(short = 'l', long = "logging", default_value_t = false)]
     pub logging: bool,
@@ -95,6 +97,11 @@ impl AppState {
             Some(t) => t.elapsed().as_secs() < 5,
             None => false,
         }
+    }
+
+    pub fn sentence_count(&self) -> usize {
+        let options = self.options.lock().expect("last_seen poisoned");
+        options.max_ui_logs
     }
 
     fn create_log_file() -> std::fs::File {

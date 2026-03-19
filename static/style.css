@@ -379,11 +379,6 @@ mark.hl.hl-active {
   color: var(--critical);
 }
 
-.stat-v.c-search {
-  color: var(--hl-text);
-  font-size: 0.75rem;
-}
-
 /* TOOLBAR */
 .toolbar {
   flex-shrink: 0;
