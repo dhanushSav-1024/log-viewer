@@ -1,6 +1,6 @@
 #!/bin/env bash
 set -e
-URL="https://github.com/dhanushSav-1024/log-viewer/releases/download/v0.6/log-view-linux-x64"
+URL="https://github.com/dhanushSav-1024/log-viewer/releases/download/v0.7/log-view-linux-x64"
 BINARY="log-view"
 INSTALL_DIR="/usr/local/bin"
 
