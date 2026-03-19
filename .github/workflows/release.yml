@@ -1,0 +1,181 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head-1 | sed 's/.*= *"\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if version changed from last release
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT="${{ steps.get_version.outputs.version }}"
+          LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "none")
+          LATEST_VER="${LATEST#v}"
+          echo "Current: $CURRENT | Latest release: $LATEST_VER"
+          if [ "$CURRENT" != "$LATEST_VER" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-linux:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - name: Build Linux x64
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+      - name: Rename binary
+        run: cp target/x86_64-unknown-linux-gnu/release/log-view log-view-linux-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: log-view-linux-x64
+
+  build-windows:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Build Windows x64
+        run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: Rename binary
+        run: cp target/x86_64-pc-windows-msvc/release/log-view.exe log-view-windows-x64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: log-view-windows-x64.exe
+
+  build-mac:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - name: Build macOS ARM64
+        run: cargo build --release --target aarch64-apple-darwin
+      - name: Rename binary
+        run: cp target/aarch64-apple-darwin/release/log-view log-view-mac-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm64
+          path: log-view-mac-arm64
+
+  build-android:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install Android NDK cross linker
+        run: |
+          sudo apt-get install -y gcc-multilib
+          cargo install cross --git https://github.com/cross-rs/cross
+      - name: Build Android ARM64
+        run: cross build --release --target aarch64-linux-android
+      - name: Rename binary
+        run: cp target/aarch64-linux-android/release/log-view log-view-android-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-arm64
+          path: log-view-android-arm64
+
+  build-ios:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - name: Build iOS ARM64
+        run: cargo build --release --target aarch64-apple-ios
+      - name: Rename binary
+        run: cp target/aarch64-apple-ios/release/log-view log-view-ios-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-arm64
+          path: log-view-ios-arm64
+
+  release:
+    needs:
+      [
+        check-version,
+        build-linux,
+        build-windows,
+        build-mac,
+        build-android,
+        build-ios,
+      ]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Update install.sh with new version
+        run: |
+          sed -i "s|releases/download/v[0-9.]\+/log-view-x64|releases/download/v${VERSION}/log-view-linux-x64|g" install.sh
+
+      - name: Commit updated install.sh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add install.sh
+          git diff --cached --quiet || git commit -m "chore: update install.sh to v${VERSION}"
+          git push
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            artifacts/linux-x64/log-view-linux-x64 \
+            artifacts/windows-x64/log-view-windows-x64.exe \
+            artifacts/mac-arm64/log-view-mac-arm64 \
+            artifacts/android-arm64/log-view-android-arm64 \
+            artifacts/ios-arm64/log-view-ios-arm64
