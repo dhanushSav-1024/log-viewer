@@ -20,7 +20,7 @@ jobs:
       - name: Get version from Cargo.toml
         id: get_version
         run: |
-          VERSION=$(grep '^version' Cargo.toml | head-1 | sed 's/.*= *"\(.*\)"/\1/')
+          VERSION=$(sed -n 's/^version = "\([0-9]*\.[0-9]*\)\.[0-9]*"/\1/p' Cargo.toml | head -1)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Check if version changed from last release
@@ -92,56 +92,8 @@ jobs:
           name: mac-arm64
           path: log-view-mac-arm64
 
-  build-android:
-    needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
-      - name: Install Android NDK cross linker
-        run: |
-          sudo apt-get install -y gcc-multilib
-          cargo install cross --git https://github.com/cross-rs/cross
-      - name: Build Android ARM64
-        run: cross build --release --target aarch64-linux-android
-      - name: Rename binary
-        run: cp target/aarch64-linux-android/release/log-view log-view-android-arm64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android-arm64
-          path: log-view-android-arm64
-
-  build-ios:
-    needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios
-      - name: Build iOS ARM64
-        run: cargo build --release --target aarch64-apple-ios
-      - name: Rename binary
-        run: cp target/aarch64-apple-ios/release/log-view log-view-ios-arm64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios-arm64
-          path: log-view-ios-arm64
-
   release:
-    needs:
-      [
-        check-version,
-        build-linux,
-        build-windows,
-        build-mac,
-        build-android,
-        build-ios,
-      ]
+    needs: [check-version, build-linux, build-windows, build-mac]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -157,7 +109,7 @@ jobs:
 
       - name: Update install.sh with new version
         run: |
-          sed -i "s|releases/download/v[0-9.]\+/log-view-x64|releases/download/v${VERSION}/log-view-linux-x64|g" install.sh
+          sed -i "s|releases/download/v[0-9.]\+/log-view-linux-x64|releases/download/v${VERSION}/log-view-linux-x64|g" install.sh
 
       - name: Commit updated install.sh
         run: |
@@ -176,6 +128,4 @@ jobs:
             --generate-notes \
             artifacts/linux-x64/log-view-linux-x64 \
             artifacts/windows-x64/log-view-windows-x64.exe \
-            artifacts/mac-arm64/log-view-mac-arm64 \
-            artifacts/android-arm64/log-view-android-arm64 \
-            artifacts/ios-arm64/log-view-ios-arm64
+            artifacts/mac-arm64/log-view-mac-arm64
