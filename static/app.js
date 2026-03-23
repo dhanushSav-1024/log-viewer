@@ -19,12 +19,11 @@ let statWarn = 0,
   statCrit = 0;
 
 let openParsePanels = new Set();
-
 let searchQuery = "";
-
 let totalReceived = 0;
-
 let maxLogs = 1000;
+let logIdCounter = 0;
+const logById = new Map();
 
 function trimToMax(arr) {
   if (arr.length > maxLogs) arr.splice(0, arr.length - maxLogs);
@@ -59,7 +58,6 @@ function onSearchInput() {
   document
     .getElementById("searchKbd")
     .classList.toggle("hidden", raw.length > 0);
-
   flushAndRebuild();
 }
 function onSearchKey(e) {
@@ -229,7 +227,7 @@ function togglePause() {
     btn.classList.remove("active");
     dot.classList.remove("paused");
     document.getElementById("statusTxt").textContent = "LIVE";
-    connectSSE();
+    openSSE();
   }
 }
 
@@ -245,8 +243,6 @@ function pyToJson(s) {
       i = 0;
     while (i < j.length) {
       const ch = j[i];
-
-      // NEW: pass through already-valid double-quoted strings untouched
       if (ch === '"') {
         out += ch;
         i++;
@@ -261,11 +257,10 @@ function pyToJson(s) {
             }
             continue;
           }
-          if (c === '"') break; // end of double-quoted string
+          if (c === '"') break;
         }
         continue;
       }
-
       if (ch === "'") {
         let str = '"';
         i++;
@@ -335,8 +330,7 @@ function extractOneJSON(msg, fromIdx = 0) {
       }
     }
   }
-  if (end === -1) return null; // unbalanced — truly nothing usable
-
+  if (end === -1) return null;
   const raw = msg.slice(start, end);
   let parsed = null;
   try {
@@ -347,23 +341,20 @@ function extractOneJSON(msg, fromIdx = 0) {
       parsed = JSON.parse(pyToJson(raw));
     } catch {}
   }
-  // Always return start+end so caller can skip past the whole block
   return { parsed, start, end };
 }
-
 function extractAllJSON(msg) {
   const blocks = [];
   let cursor = 0;
   while (cursor < msg.length) {
     const b = extractOneJSON(msg, cursor);
-    if (!b) break; // no { or [ found at all
-    if (b.parsed !== null && typeof b.parsed === "object") {
-      blocks.push(b); // only keep successful parses
-    }
-    cursor = b.end; // ALWAYS skip past the whole block
+    if (!b) break;
+    if (b.parsed !== null && typeof b.parsed === "object") blocks.push(b);
+    cursor = b.end;
   }
   return blocks;
 }
+
 function jLeaf(data) {
   if (data === null) return `<span class="jnull">null</span>`;
   if (typeof data === "boolean") return `<span class="jbool">${data}</span>`;
@@ -427,13 +418,14 @@ function collapseAll() {
     .querySelectorAll("#modalBody .jtoggle:not(.spacer)")
     .forEach((el) => (el.textContent = "▸"));
 }
-function openModal(logIdx) {
-  const log = allLogs[logIdx];
+
+function openModal(id) {
+  const log = logById.get(id);
   if (!log) return;
   const blocks = extractAllJSON(log.message);
   if (!blocks.length) return;
   modalJson = blocks.map((b) => b.parsed);
-  const prefix = "modal_" + logIdx + "_";
+  const prefix = "modal_" + id + "_";
   document.getElementById("modalMeta").textContent =
     `${log.time} · ${log.level}${log.logger ? " · " + log.logger : ""}`;
   document.getElementById("modalBody").innerHTML = blocks
@@ -471,14 +463,14 @@ function copyModalJson() {
   });
 }
 
-function buildParsePanelContent(logIdx, panelEl) {
-  const log = allLogs[logIdx];
+function buildParsePanelContent(id, panelEl) {
+  const log = logById.get(id);
   if (!log) return;
   const blocks = extractAllJSON(log.message);
   if (!blocks.length) {
     panelEl.innerHTML = `<span class="pp-empty">No JSON found in this message.</span>`;
   } else {
-    const prefix = "e" + logIdx + "_";
+    const prefix = "e" + id + "_";
     panelEl.innerHTML = blocks
       .map(
         (b, bi) => `
@@ -488,21 +480,24 @@ function buildParsePanelContent(logIdx, panelEl) {
       .join("");
   }
 }
-function toggleParsePanel(idx) {
-  openParsePanels.has(idx)
-    ? openParsePanels.delete(idx)
-    : openParsePanels.add(idx);
-  const panel = document.getElementById("pp" + idx);
-  const btn = document.getElementById("parsebtn" + idx);
-  const isOpen = openParsePanels.has(idx);
+function toggleParsePanel(id) {
+  openParsePanels.has(id)
+    ? openParsePanels.delete(id)
+    : openParsePanels.add(id);
+  const panel = document.getElementById("pp" + id);
+  const btn = document.getElementById("parsebtn" + id);
+  const isOpen = openParsePanels.has(id);
   if (panel) {
     panel.style.display = isOpen ? "block" : "none";
-    if (isOpen) buildParsePanelContent(idx, panel);
+    if (isOpen) buildParsePanelContent(id, panel);
   }
   if (btn) btn.classList.toggle("active", isOpen);
 }
 
-function makeEntry(log, idx) {
+function makeEntry(log) {
+  const id = log._id;
+  logById.set(id, log);
+
   const lvlU = log.level.toUpperCase();
   const isBuiltin = BUILTINS.has(lvlU);
   const map = {
@@ -517,25 +512,25 @@ function makeEntry(log, idx) {
   const src = log.logger
     ? `<div class="le-src">Logger: <b>${log.logger}</b>&nbsp;·&nbsp;<b>${log.filename || ""}${log.lineno ? ":" + log.lineno : ""}</b></div>`
     : "";
-  const isOpen = openParsePanels.has(idx);
+  const isOpen = openParsePanels.has(id);
   const el = document.createElement("div");
   el.className = `le ${lvlCls}`;
   el.dataset.level = lvlU;
-  el.id = `le${idx}`;
+  el.id = `le${id}`;
   el.innerHTML = `
     <div class="le-actions">
-      <button class="act-btn" onclick="copyEntry(${idx})">⎘ COPY</button>
-      <button class="act-btn" onclick="openModal(${idx})">⤢ MODAL</button>
+      <button class="act-btn" onclick="copyEntry(${id})">⎘ COPY</button>
+      <button class="act-btn" onclick="openModal(${id})">⤢ MODAL</button>
     </div>
     <span class="le-time">${log.time}</span>
     <span class="le-badge ${bdgCls}">${lvlU}</span>
     <div class="le-body">
       <div class="le-msg" data-original-text="${esc(log.message)}">${highlightMsg(log.message, searchQuery)}</div>
       ${src}
-      <button class="parse-btn${isOpen ? " active" : ""}" id="parsebtn${idx}" onclick="toggleParsePanel(${idx})">▸ PARSE</button>
-      <div class="parse-panel" id="pp${idx}" style="display:${isOpen ? "block" : "none"}"></div>
+      <button class="parse-btn${isOpen ? " active" : ""}" id="parsebtn${id}" onclick="toggleParsePanel(${id})">▸ PARSE</button>
+      <div class="parse-panel" id="pp${id}" style="display:${isOpen ? "block" : "none"}"></div>
     </div>`;
-  if (isOpen) buildParsePanelContent(idx, el.querySelector(".parse-panel"));
+  if (isOpen) buildParsePanelContent(id, el.querySelector(".parse-panel"));
   return el;
 }
 
@@ -551,20 +546,17 @@ function trimDOMIfNeeded() {
     rows[i].remove();
   }
   domRowCount -= removeCount;
-
   scroll.scrollTop = Math.max(0, savedTop - removedH);
 }
 
-function appendEntries(logs, indexOffset) {
+function appendEntries(logs) {
   const scroll = document.getElementById("logScroll");
-
   const empty = scroll.querySelector(".empty");
   if (empty) empty.remove();
-
   const frag = document.createDocumentFragment();
   for (let i = 0; i < logs.length; i++) {
     if (!passesFilter(logs[i])) continue;
-    frag.appendChild(makeEntry(logs[i], indexOffset + i));
+    frag.appendChild(makeEntry(logs[i]));
     domRowCount++;
   }
   scroll.appendChild(frag);
@@ -579,29 +571,20 @@ function passesFilter(log) {
 }
 
 let sentinel = null;
-let bottomObs = null;
 
 function setupSentinel() {
   const scroll = document.getElementById("logScroll");
-
   sentinel = document.createElement("div");
   sentinel.id = "scrollSentinel";
   sentinel.className = "scroll-sentinel";
   scroll.appendChild(sentinel);
 
-  bottomObs = new IntersectionObserver(
-    (entries) => {
-      const wasAtBottom = atBottom;
-      atBottom = entries[0].isIntersecting;
-
-      if (atBottom && !wasAtBottom) {
-        flushPending();
-      }
-    },
-    { root: scroll, threshold: 0 },
-  );
-
-  bottomObs.observe(sentinel);
+  scroll.addEventListener("scroll", () => {
+    const dist = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+    const wasAtBottom = atBottom;
+    atBottom = dist < 60;
+    if (atBottom && !wasAtBottom) flushPending();
+  });
 }
 
 function flushPending() {
@@ -609,15 +592,11 @@ function flushPending() {
     updateNewBadge(0);
     return;
   }
-
   const scroll = document.getElementById("logScroll");
-  const indexBase = allLogs.length - pendingLogs.length;
-
-  appendEntries(pendingLogs, indexBase);
+  appendEntries(pendingLogs);
   pendingLogs = [];
   updateNewBadge(0);
-
-  scroll.appendChild(sentinel);
+  if (sentinel) scroll.appendChild(sentinel);
   scroll.scrollTop = scroll.scrollHeight;
 }
 
@@ -630,48 +609,39 @@ function updateNewBadge(n) {
     badge.onclick = scrollBottom;
     document.body.appendChild(badge);
   }
-  if (n > 0) {
-    badge.style.display = "block";
-    badge.textContent = `▼ ${n} new`;
-  } else {
-    badge.style.display = "none";
-  }
+  badge.style.display = n > 0 ? "block" : "none";
+  if (n > 0) badge.textContent = `▼ ${n} new`;
 }
 
 function flushAndRebuild() {
   pendingLogs = [];
   updateNewBadge(0);
-
   const scroll = document.getElementById("logScroll");
   scroll.innerHTML = "";
   domRowCount = 0;
-
   const frag = document.createDocumentFragment();
   let added = 0;
   for (let i = 0; i < allLogs.length; i++) {
     if (!passesFilter(allLogs[i])) continue;
-    frag.appendChild(makeEntry(allLogs[i], i));
+    frag.appendChild(makeEntry(allLogs[i]));
     added++;
   }
-
   if (added === 0) {
     const empty = document.createElement("div");
     empty.className = "empty";
     empty.innerHTML = `<span class="empty-glyph">◈</span>NO SIGNAL — WAITING FOR LOGS`;
     frag.appendChild(empty);
   }
-
   scroll.appendChild(frag);
   domRowCount = added;
   trimDOMIfNeeded();
-
-  scroll.appendChild(sentinel);
-
+  if (sentinel) scroll.appendChild(sentinel);
   scroll.scrollTop = scroll.scrollHeight;
   updateStats();
 }
 
 function ingestLog(entry) {
+  entry._id = logIdCounter++;
   totalReceived++;
   allLogs.push(entry);
   trimToMax(allLogs);
@@ -683,34 +653,29 @@ function ingestLog(entry) {
 
   if (atBottom) {
     if (passesFilter(entry)) {
-      appendEntries([entry], allLogs.length - 1);
+      appendEntries([entry]);
       const scroll = document.getElementById("logScroll");
-      scroll.appendChild(sentinel);
+      if (sentinel) scroll.appendChild(sentinel);
       scroll.scrollTop = scroll.scrollHeight;
     }
   } else {
     if (passesFilter(entry)) {
       pendingLogs.push(entry);
-      trimToMax(pendingLogs);
+      if (pendingLogs.length > maxLogs)
+        pendingLogs.splice(0, pendingLogs.length - maxLogs);
       updateNewBadge(pendingLogs.length);
     }
   }
-
   updateStats();
 }
 
 function updateStats() {
   document.getElementById("sTotal").textContent = totalReceived;
-
   const vis = allLogs.filter(passesFilter).length;
   document.getElementById("sVis").textContent = vis;
-
   document.getElementById("sWarn").textContent = statWarn;
   document.getElementById("sErr").textContent = statErr;
   document.getElementById("sCrit").textContent = statCrit;
-  document.getElementById("sMatches").textContent = searchQuery
-    ? allLogs.filter((l) => matchesSearch(l.message, searchQuery)).length
-    : "—";
 }
 
 async function connectSSE() {
@@ -735,6 +700,8 @@ async function connectSSE() {
     .then((data) => {
       allLogs = [];
       totalReceived = 0;
+      logIdCounter = 0;
+      logById.clear();
       statWarn = 0;
       statErr = 0;
       statCrit = 0;
@@ -743,6 +710,7 @@ async function connectSSE() {
       atBottom = true;
 
       data.logs.forEach((l) => {
+        l._id = logIdCounter++;
         allLogs.push(l);
         const v = l.level.toUpperCase();
         if (v === "WARNING") statWarn++;
@@ -751,14 +719,16 @@ async function connectSSE() {
       });
 
       trimToMax(allLogs);
-      totalReceived = totalReceived + allLogs.length;
+      totalReceived = allLogs.length;
+
       document.getElementById("sTime").textContent =
         new Date().toLocaleTimeString();
       document.getElementById("statusTxt").textContent = "LIVE";
       flushAndRebuild();
       openSSE();
     })
-    .catch(() => {
+    .catch((err) => {
+      console.error("connectSSE /api/logs failed:", err);
       document.getElementById("statusTxt").textContent = "NO CONNECTION";
       reconnectTimer = setTimeout(connectSSE, 2000);
     });
@@ -783,11 +753,12 @@ function openSSE() {
     document.getElementById("statusTxt").textContent = "NO CONNECTION";
     es.close();
     es = null;
-    reconnectTimer = setTimeout(connectSSE, 2000);
+    reconnectTimer = setTimeout(openSSE, 2000);
   };
 }
 
 function scrollBottom() {
+  atBottom = true;
   flushPending();
   const scroll = document.getElementById("logScroll");
   scroll.scrollTop = scroll.scrollHeight;
@@ -797,10 +768,12 @@ function doClear() {
   if (!confirm("Clear all logs?")) return;
   fetch("/api/clear", { method: "POST" }).then(() => {
     allLogs = [];
+    totalReceived = 0;
+    logIdCounter = 0;
+    logById.clear();
     statWarn = 0;
     statErr = 0;
     statCrit = 0;
-    totalReceived = 0;
     pendingLogs = [];
     openParsePanels.clear();
     atBottom = true;
@@ -808,7 +781,6 @@ function doClear() {
     document.getElementById("searchInp").value = "";
     document.getElementById("searchClear").classList.remove("visible");
     document.getElementById("searchKbd").classList.remove("hidden");
-    document.getElementById("sMatches").textContent = "—";
     updateNewBadge(0);
     flushAndRebuild();
   });
@@ -829,6 +801,8 @@ async function changeLogging() {
 
 window.addEventListener("load", async () => {
   setupSentinel();
+  connectSSE();
+
   try {
     const res = await fetch("api/logging_status");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -842,14 +816,14 @@ window.addEventListener("load", async () => {
   }
 });
 
-function copyEntry(idx) {
-  const log = allLogs[idx];
+function copyEntry(id) {
+  const log = logById.get(id);
   if (!log) return;
   const txt =
     `[${log.time}] [${log.level}] ${log.message}` +
     (log.logger ? ` | ${log.logger} ${log.filename}:${log.lineno}` : "");
   navigator.clipboard.writeText(txt).then(() => {
-    const btn = document.querySelector(`#le${idx} .act-btn`);
+    const btn = document.querySelector(`#le${id} .act-btn`);
     if (btn) {
       btn.textContent = "✓";
       btn.classList.add("ok");
@@ -882,7 +856,6 @@ function esc(s) {
 
 loadLevels();
 loadCLevels();
-connectSSE();
 
 document.getElementById("prevMatch").disabled = true;
 document.getElementById("nextMatch").disabled = true;
